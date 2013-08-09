@@ -148,6 +148,10 @@ public class DBCursorTest extends TestCase {
 
     @Test//(enabled = false)
     public void testTailable() {
+        if (_db.getMongo().isMongosConnection()) {
+            // this is a bit bizarre
+            throw new SkipException("tailable cursor fails on mongos, see Tokutek/mongo#77");
+        }
         DBCollection c = _db.getCollection("tail1");
         c.drop();
         _db.createCollection("tail1", new BasicDBObject("capped", true).append("size", 10000));
