@@ -30,6 +30,7 @@ import org.bson.types.MaxKey;
 import org.bson.types.MinKey;
 import org.bson.types.ObjectId;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
