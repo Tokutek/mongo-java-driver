@@ -660,6 +660,9 @@ public class JavaClientTest extends TestCase {
         assertEquals( "26e3d12bd197368526409177b3e8aab6" , _db._hash( "e" , "j".toCharArray() ) );
 
         Mongo m = new MongoClient();
+        if (m.isMongosConnection()) {
+            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
+        }
         DB db = m.getDB(cleanupDB);
         DBCollection usersCollection = db.getCollection( "system.users" );
 
@@ -694,6 +697,9 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testAuthenticateCommand() throws UnknownHostException {
         Mongo m = new MongoClient();
+        if (m.isMongosConnection()) {
+            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
+        }
         DB db = m.getDB(cleanupDB);
         DBCollection usersCollections = db.getCollection( "system.users" );
 
@@ -729,6 +735,9 @@ public class JavaClientTest extends TestCase {
     public void testAuthenticateWithCredentialsInURIAndNoDatabase() throws UnknownHostException {
         // First add the user
         Mongo m = new MongoClient(new MongoClientURI("mongodb://localhost"));
+        if (m.isMongosConnection()) {
+            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
+        }
         DB db = m.getDB("admin");
         DBCollection usersCollection = db.getCollection( "system.users" );
         try {
@@ -759,6 +768,9 @@ public class JavaClientTest extends TestCase {
     public void testAuthenticateWithCredentialsInURI() throws UnknownHostException {
         // First add the user
         Mongo m = new MongoClient(new MongoClientURI("mongodb://localhost"));
+        if (m.isMongosConnection()) {
+            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
+        }
         DB db = m.getDB(cleanupDB);
         DBCollection usersCollection = db.getCollection( "system.users" );
         try {
@@ -789,6 +801,9 @@ public class JavaClientTest extends TestCase {
     public void testAuthenticateCommandWithCredentialsInURI() throws UnknownHostException {
         // First add the user
         Mongo m = new MongoClient(new MongoClientURI("mongodb://localhost"));
+        if (m.isMongosConnection()) {
+            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
+        }
         DB db = m.getDB(cleanupDB);
         DBCollection usersCollection = db.getCollection( "system.users" );
         try {

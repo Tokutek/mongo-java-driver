@@ -19,6 +19,7 @@ package com.mongodb;
 
 import com.mongodb.util.TestCase;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
@@ -30,6 +31,9 @@ public class DBPortTest extends TestCase {
     @SuppressWarnings("deprecation")
     public void testAuthentication() throws IOException {
         Mongo m = new MongoClient();
+        if (m.isMongosConnection()) {
+            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
+        }
         DB db1 = m.getDB("DBPortTest1");
         DB db2 = m.getDB("DBPortTest2");
         db1.dropDatabase();
