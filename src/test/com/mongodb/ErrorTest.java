@@ -17,6 +17,7 @@
 package com.mongodb;
 
 import org.testng.annotations.*;
+import org.testng.SkipException;
 
 import com.mongodb.util.*;
 

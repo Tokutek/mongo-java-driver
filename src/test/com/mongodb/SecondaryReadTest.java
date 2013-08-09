@@ -20,6 +20,7 @@ package com.mongodb;
 
 import com.mongodb.util.TestCase;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 
 import java.util.ArrayList;
 import java.util.List;

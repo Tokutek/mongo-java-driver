@@ -21,6 +21,7 @@ package com.mongodb;
 import com.mongodb.util.TestCase;
 import org.bson.types.ObjectId;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 
 import java.util.Date;
 import java.util.Random;
