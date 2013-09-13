@@ -18,10 +18,14 @@
 
 package org.bson;
 
+import static org.testng.Assert.assertNotEquals;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.*;
-
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Vector;
 import org.bson.io.BasicOutputBuffer;
 import org.bson.io.OutputBuffer;
 import org.bson.types.CodeWScope;
@@ -81,6 +85,14 @@ public class BSONTest extends Assert {
         _test( new BasicBSONObject( "x" , 5.2 ).append( "y" , new Object[]{ "a" , "eliot" , "b" , true } ).append( "z" , null ) , 62 , "cb7bad5697714ba0cbf51d113b6a0ee8" );
         
         _test( new BasicBSONObject( "x" , 4 ) , 12 , "d1ed8dbf79b78fa215e2ded74548d89d" );
+    }
+
+    @Test( expectedExceptions = IllegalArgumentException.class )
+    public void testNullKeysFail() {
+        BSONEncoder e = new BasicBSONEncoder();
+        OutputBuffer buf = new BasicOutputBuffer();
+        e.set( buf );
+        e.putObject( new BasicBSONObject( "foo\0bar","baz" ) );
     }
     
     @Test
@@ -250,6 +262,27 @@ public class BSONTest extends Assert {
         BSON.removeDecodingHook( Date.class, tf );
         assertFalse( BSON.getDecodingHooks( Date.class ).contains( tf ) );
 
+    }
+    
+    @Test
+    public void testEquals() {
+        assertNotEquals(new BasicBSONObject("a", 1111111111111111111L), new BasicBSONObject("a", 1111111111111111112L),
+                "longs should not be equal");
+
+        assertNotEquals(new BasicBSONObject("a", 100.1D), new BasicBSONObject("a", 100.2D),
+                "doubles should not be equal");
+        
+        assertNotEquals(new BasicBSONObject("a", 100.1F), new BasicBSONObject("a", 100.2F),
+                "floats should not be equal");
+        
+        assertEquals(new BasicBSONObject("a", 100.1D), new BasicBSONObject("a", 100.1D),
+                "doubles should be equal");
+        
+        assertEquals(new BasicBSONObject("a", 100.1F), new BasicBSONObject("a", 100.1F),
+                "floats should be equal");
+        
+        assertEquals(new BasicBSONObject("a", 100), new BasicBSONObject("a", 100L),
+                "int and long should be equal");
     }
 
     private class TestDate {

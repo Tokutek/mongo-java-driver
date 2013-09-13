@@ -201,6 +201,9 @@ public class BasicBSONEncoder implements BSONEncoder {
             return;
         
         if ( DEBUG ) System.out.println( "\t put thing : " + name );
+
+        if ( name.contains( "\0" ) )
+            throw new IllegalArgumentException( "Document field names can't have a NULL character. (Bad Key: '" + name + "')" );
         
         if ( name.equals( "$where") && val instanceof String ){
             _put( CODE , name );
@@ -476,6 +479,11 @@ public class BasicBSONEncoder implements BSONEncoder {
 
         for ( int i=0; i<len; ){
             int c = Character.codePointAt( str , i );
+
+            if (c == 0x0) {
+                throw new BSONException(
+                        String.format("BSON cstring '%s' is not valid because it contains a null character at index %d", str, i));
+            }
 
             if ( c < 0x80 ){
                 _buf.write( (byte)c );

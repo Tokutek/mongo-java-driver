@@ -722,7 +722,7 @@ public abstract class DBCollection {
         QueryOpBuilder queryOpBuilder = new QueryOpBuilder().addQuery(o).addOrderBy(orderBy);
 
         if (getDB().getMongo().isMongosConnection()) {
-            queryOpBuilder.addReadPreference(readPref.toDBObject());
+            queryOpBuilder.addReadPreference(readPref);
         }
 
         Iterator<DBObject> i = __find(queryOpBuilder.get(), fields , 0 , -1 , 0, getOptions(), readPref, getDecoder() );
@@ -1407,13 +1407,8 @@ public abstract class DBCollection {
             return;
 
         for ( String s : o.keySet() ){
-            validateKey ( s );
-            Object inner = o.get( s );
-            if ( inner instanceof DBObject ) {
-                _checkKeys( (DBObject)inner );
-            } else if ( inner instanceof Map ) {
-                _checkKeys( (Map<String, Object>)inner );
-            }
+            validateKey( s );
+            _checkValue( o.get( s ) );
         }
     }
 
@@ -1421,14 +1416,25 @@ public abstract class DBCollection {
      * Checks key strings for invalid characters.
      */
     private void _checkKeys( Map<String, Object> o ) {
-        for ( String s : o.keySet() ){
-            validateKey ( s );
-            Object inner = o.get( s );
-            if ( inner instanceof DBObject ) {
-                _checkKeys( (DBObject)inner );
-            } else if ( inner instanceof Map ) {
-                _checkKeys( (Map<String, Object>)inner );
-            }
+        for ( Map.Entry<String, Object> cur : o.entrySet() ){
+            validateKey( cur.getKey() );
+            _checkValue( cur.getValue() );
+        }
+    }
+
+    private void _checkValues( final List list ) {
+        for ( Object cur : list ) {
+            _checkValue( cur );
+        }
+    }
+
+    private void _checkValue(final Object value) {
+        if ( value instanceof DBObject ) {
+            _checkKeys( (DBObject)value );
+        } else if ( value instanceof Map ) {
+            _checkKeys( (Map<String, Object>)value );
+        } else if ( value instanceof List ) {
+            _checkValues((List) value);
         }
     }
 
@@ -1438,10 +1444,12 @@ public abstract class DBCollection {
      * @exception IllegalArgumentException if the key is not valid.
      */
     private void validateKey(String s ) {
+        if ( s.contains( "\0" ) )
+            throw new IllegalArgumentException( "Document field names can't have a NULL character. (Bad Key: '" + s + "')" );
         if ( s.contains( "." ) )
-            throw new IllegalArgumentException( "fields stored in the db can't have . in them. (Bad Key: '" + s + "')" );
+            throw new IllegalArgumentException( "Document field names can't have a . in them. (Bad Key: '" + s + "')" );
         if ( s.startsWith( "$" ) )
-            throw new IllegalArgumentException( "fields stored in the db can't start with '$' (Bad Key: '" + s + "')" );
+            throw new IllegalArgumentException( "Document field names can't start with '$' (Bad Key: '" + s + "')" );
     }
 
     /**

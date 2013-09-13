@@ -135,11 +135,11 @@ limitations under the License.
             optimize="off"
             deprecation="off"
             source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
             encoding="ISO-8859-1"
             fork="true"
             debug="on"
             includeantruntime="false"
-            target="${build.conf.javac.source}"
             memoryMaximumSize="256M"
             >
             <compilerarg value="-Xlint:all,-rawtypes"/>
@@ -275,6 +275,7 @@ limitations under the License.
                 optimize="off"
                 deprecation="off"
                 source="${build.conf.javac.source}"
+                target="${build.conf.javac.source}"
                 encoding="ISO-8859-1"
                 fork="true"
                 debug="on"
@@ -284,29 +285,14 @@ limitations under the License.
         </javac>
     </target>
 
-    <target name="test" depends="test-compile">
+    <target name="test" depends="test-compile, test-nodeps"/>
 
+    <target name="test-nodeps">
         <testng classpathref="${test.classpath}" outputdir="${test.dir}" listeners="com.mongodb.util.TestNGListener" haltonfailure="false" verbose="1" >
             <jvmarg value="-Xmx512M" />
             <jvmarg value="-ea" />
             <jvmarg value="-Dcom.mongodb.slaveAcceptableLatencyMS=${test.com.mongodb.slaveAcceptableLatencyMS}"/>
             <sysproperty key="${cobertura.arg}" value="${cobertura.datafile}" />
-            <classfileset  dir="${build.test.dir}" includes="**/${test.classes}.class" />
-        </testng>
-    </target>
-
-    <target name="test-with-artifact" depends="test-compile">
-
-        <path id="artifact.classpath">
-            <pathelement path="${build.test.dir}" />
-            <pathelement location="lib/testng-6.3.1.jar"/>
-            <pathelement location="${artifact.name}"/>
-        </path>
-
-        <testng classpathref="artifact.classpath" outputdir="${test.dir}" listeners="com.mongodb.util.TestNGListener" haltonfailure="false" verbose="1" >
-            <jvmarg value="-Xmx512M" />
-            <jvmarg value="-ea" />
-            <jvmarg value="-Dcom.mongodb.slaveAcceptableLatencyMS=${test.com.mongodb.slaveAcceptableLatencyMS}"/>
             <classfileset  dir="${build.test.dir}" includes="**/${test.classes}.class" />
         </testng>
     </target>
@@ -346,6 +332,7 @@ limitations under the License.
             optimize="off"
             deprecation="off"
             source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
             encoding="ISO-8859-1"
             debug="on"
             includeantruntime="false">
@@ -365,6 +352,7 @@ limitations under the License.
             optimize="off"
             deprecation="off"
             source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
             encoding="ISO-8859-1"
             debug="on"
             includeantruntime="false">
