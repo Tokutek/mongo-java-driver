@@ -97,15 +97,21 @@ public class GridFS {
 
         _filesCollection = _db.getCollection( _bucketName + ".files" );
         _chunkCollection = _db.getCollection( _bucketName + ".chunks" );
+        DBCollection systemIndexesCollection = _db.getCollection( "system.indexes" );
 
         // ensure standard indexes as long as collections are small
         try {
-            if (_filesCollection.count() < 1000) {
-                _filesCollection.ensureIndex( BasicDBObjectBuilder.start().add( "filename" , 1 ).add( "uploadDate" , 1 ).get() );
+            DBObject filesKey = BasicDBObjectBuilder.start().add( "filename" , 1 ).add( "uploadDate" , 1 ).get();
+            DBObject filesIndex = BasicDBObjectBuilder.start().add( "ns" , _filesCollection.getFullName() ).add( "key" , filesKey ).get();
+            DBObject chunkKey = BasicDBObjectBuilder.start().add( "files_id" , 1 ).add( "n" , 1 ).get();
+            DBObject chunkIndex = BasicDBObjectBuilder.start().add( "ns" , _chunkCollection.getFullName() ).add( "key" , chunkKey ).get();
+
+            // count() is slow on large TokuMX collections, so first check if we already have the index
+            if (systemIndexesCollection.findOne( filesIndex ) == null && _filesCollection.count() < 1000) {
+                _filesCollection.ensureIndex( filesKey );
             }
-            if (_chunkCollection.count() < 1000) {
-                _chunkCollection.ensureIndex( BasicDBObjectBuilder.start().add( "files_id" , 1 ).add( "n" , 1 ).get() ,
-                        BasicDBObjectBuilder.start().add( "unique" , true ).get() );
+            if (systemIndexesCollection.findOne( chunkIndex ) == null && _chunkCollection.count() < 1000) {
+                _chunkCollection.ensureIndex( chunkKey , BasicDBObjectBuilder.start().add( "unique" , true ).get() );
             }
         } catch (MongoException e) {
              LOGGER.info(String.format("Unable to ensure indices on GridFS collections in database %s", db.getName()));
