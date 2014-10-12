@@ -32,6 +32,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assume.assumeFalse;
 
 /**
  * Testing functionality of database TCP connector.  The structure of this class is a bit unusual,
@@ -138,9 +139,7 @@ public class DBTCPConnectorTest extends TestCase {
         }
         // Leif isn't sure why this test fails on mongos, but it does and
         // it seems like more trouble than it's worth to figure out why.
-        if (_db.getMongo().isMongosConnection()) {
-            throw new SkipException("test disabled on mongos");
-        }
+        assumeFalse(_db.getMongo().isMongosConnection());
 
         DBTCPConnector.MyPort myPort = _connector.getMyPort();
         _connector.requestStart();
