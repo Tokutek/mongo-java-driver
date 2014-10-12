@@ -293,8 +293,11 @@ public class QueryBuilderTest extends TestCase {
     
     @Test
     public void nearTest() {
-        throw new SkipException("geo tests disabled on TokuMX");
-        /*
+        if (serverIsAtLeastTokumxVersion(2.1) ||
+            !serverIsAtLeastTokumxVersion(2.0)) {
+            throw new SkipException("geo tests disabled on TokuMX");
+        }
+
         String key = "loc";
         DBCollection collection = _testDB.getCollection("geoSpatial-test");
         BasicDBObject geoSpatialIndex = new BasicDBObject();
@@ -344,7 +347,6 @@ public class QueryBuilderTest extends TestCase {
             QueryBuilder.start(key).withinPolygon(tooFew);
             fail("IllegalArgumentException should have been thrown");
         }catch(IllegalArgumentException e) {}
-        */
     }
 	
     @Test

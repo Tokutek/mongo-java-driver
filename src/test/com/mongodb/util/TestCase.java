@@ -265,6 +265,16 @@ public class TestCase extends MyAsserts {
 
     /**
      *
+     * @param version  must be a major version, e.g. 1.8, 2,0, 2.2
+     * @return true if server is at least specified version
+     */
+    protected boolean serverIsAtLeastTokumxVersion(double version) {
+        String serverVersion = (String) cleanupMongo.getDB("admin").command("serverStatus").get("tokumxVersion");
+        return Double.parseDouble(serverVersion.substring(0, 3)) >= version;
+    }
+
+    /**
+     *
      * @param mongo the connection
      * @return true if connected to a standalone server
      */
