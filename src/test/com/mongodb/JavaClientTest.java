@@ -1,19 +1,21 @@
-// JavaClientTest.java
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// JavaClientTest.java
+
 
 package com.mongodb;
 
@@ -29,8 +31,7 @@ import org.bson.types.CodeWScope;
 import org.bson.types.MaxKey;
 import org.bson.types.MinKey;
 import org.bson.types.ObjectId;
-import org.testng.annotations.Test;
-import org.testng.SkipException;
+import org.junit.Test;
 
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -40,21 +41,24 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-public class JavaClientTest extends TestCase {
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeFalse;
 
-    public JavaClientTest() {
-	_mongo = cleanupMongo;
-	cleanupDB = "com_mongodb_unittest_JavaClientTest";
-	_db = cleanupMongo.getDB( cleanupDB );
-    }
+public class JavaClientTest extends TestCase {
 
     @Test
     public void test1()
         throws MongoException {
-        DBCollection c = _db.getCollection( "test1" );
-        c.drop();
+        DBCollection c = collection;
 
         DBObject m = new BasicDBObject();
         m.put( "name" , "eliot" );
@@ -71,8 +75,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void test2()
         throws MongoException {
-        DBCollection c = _db.getCollection( "test2" );
-        c.drop();
+        DBCollection c = collection;
 
         DBObject m = new BasicDBObject();
         m.put( "name" , "eliot" );
@@ -98,8 +101,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testWhere1()
         throws MongoException {
-        DBCollection c = _db.getCollection( "testWhere1" );
-        c.drop();
+        DBCollection c = collection;
         assertNull( c.findOne() );
 
         c.save( BasicDBObjectBuilder.start().add( "a" , 1 ).get() );
@@ -112,8 +114,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testCodeWScope()
         throws MongoException {
-        DBCollection c = _db.getCollection( "testCodeWScope" );
-        c.drop();
+        DBCollection c = collection;
         assertNull( c.findOne() );
 
         c.save( BasicDBObjectBuilder.start().add( "a" , 1 ).get() );
@@ -139,7 +140,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testCount()
         throws MongoException {
-        DBCollection c = _db.getCollection("testCount");
+        DBCollection c = collection;;
 
         c.drop();
         assertNull(c.findOne());
@@ -159,7 +160,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testIndex()
         throws MongoException {
-        DBCollection c = _db.getCollection("testIndex");
+        DBCollection c = collection;
 
         c.drop();
         assertNull(c.findOne());
@@ -181,8 +182,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testBinary()
         throws MongoException {
-        DBCollection c = _db.getCollection( "testBinary" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "a" , "eliot".getBytes() ).get() );
 
         DBObject out = c.findOne();
@@ -214,8 +214,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testMinMaxKey()
         throws MongoException {
-        DBCollection c = _db.getCollection( "testMinMaxKey" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "min" , new MinKey() ).add( "max" , new MaxKey() ).get() );
 
         DBObject out = c.findOne();
@@ -228,8 +227,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testBinaryOld()
         throws MongoException {
-        DBCollection c = _db.getCollection( "testBinary" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "a" , "eliot".getBytes() ).get() );
 
         DBObject out = c.findOne();
@@ -262,8 +260,7 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testUUID()
         throws MongoException {
-        DBCollection c = _db.getCollection( "testUUID" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "a" , new UUID(1,2)).add("x",5).get() );
 
         DBObject out = c.findOne();
@@ -275,15 +272,14 @@ public class JavaClientTest extends TestCase {
     @Test
     public void testEval()
         throws MongoException {
-        assertEquals( 17 , ((Number)(_db.eval( "return 17" ))).intValue() );
-        assertEquals( 18 , ((Number)(_db.eval( "function(x){ return 17 + x; }" , 1 ))).intValue() );
+        assertEquals( 17 , ((Number)(getDatabase().eval( "return 17" ))).intValue() );
+        assertEquals( 18 , ((Number)(getDatabase().eval( "function(x){ return 17 + x; }" , 1 ))).intValue() );
     }
 
     @Test
     public void testPartial1()
         throws MongoException {
-        DBCollection c = _db.getCollection( "partial1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.save( BasicDBObjectBuilder.start().add( "a" , 1 ).add( "b" , 2 ).get() );
 
@@ -323,8 +319,7 @@ public class JavaClientTest extends TestCase {
     public void testGroup()
         throws MongoException {
 
-        DBCollection c = _db.getCollection( "group1" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "x" , "a" ).get() );
         c.save( BasicDBObjectBuilder.start().add( "x" , "a" ).get() );
         c.save( BasicDBObjectBuilder.start().add( "x" , "a" ).get() );
@@ -341,8 +336,7 @@ public class JavaClientTest extends TestCase {
     public void testSet()
         throws MongoException {
 
-        DBCollection c = _db.getCollection( "group1" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "id" , 1 ).add( "x" , true ).get() );
         assertEquals( Boolean.class , c.findOne().get( "x" ).getClass() );
 
@@ -357,8 +351,7 @@ public class JavaClientTest extends TestCase {
     public void testKeys1()
         throws MongoException {
 
-        DBCollection c = _db.getCollection( "keys1" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().push( "a" ).add( "x" , 1 ).get() );
 
         assertEquals( 1, ((DBObject)c.findOne().get("a")).get("x" ) );
@@ -372,8 +365,7 @@ public class JavaClientTest extends TestCase {
     public void testTimestamp()
         throws MongoException {
 
-        DBCollection c = _db.getCollection( "ts1" );
-        c.drop();
+        DBCollection c = collection;
         c.save( BasicDBObjectBuilder.start().add( "y" , new BSONTimestamp() ).get() );
 
         BSONTimestamp t = (BSONTimestamp)c.findOne().get("y");
@@ -383,8 +375,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testStrictWriteSetInCollection(){
-        DBCollection c = _db.getCollection( "write1" );
-        c.drop();
+        DBCollection c = collection;
         c.setWriteConcern( WriteConcern.SAFE);
         c.insert( new BasicDBObject( "_id" , 1 ) );
         boolean gotError = false;
@@ -401,8 +392,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testStrictWriteSetInMethod(){
-        DBCollection c = _db.getCollection( "write1" );
-        c.drop();
+        DBCollection c = collection;
         c.insert( new BasicDBObject( "_id" , 1 ));
         boolean gotError = false;
         try {
@@ -418,8 +408,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testPattern(){
-        DBCollection c = _db.getCollection( "jp1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( new BasicDBObject( "x" , "a" ) );
         c.insert( new BasicDBObject( "x" , "A" ) );
@@ -433,8 +422,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testDates(){
-        DBCollection c = _db.getCollection( "dates1" );
-        c.drop();
+        DBCollection c = collection;
 
         DBObject in = new BasicDBObject( "x" , new java.util.Date() );
         c.insert( in );
@@ -445,8 +433,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testMapReduce(){
-        DBCollection c = _db.getCollection( "jmr1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.save( new BasicDBObject( "x" , new String[]{ "a" , "b" } ) );
         c.save( new BasicDBObject( "x" , new String[]{ "b" , "c" } ) );
@@ -472,8 +459,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testMapReduceInline(){
-        DBCollection c = _db.getCollection( "imr1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.save( new BasicDBObject( "x" , new String[]{ "a" , "b" } ) );
         c.save( new BasicDBObject( "x" , new String[]{ "b" , "c" } ) );
@@ -502,24 +488,22 @@ public class JavaClientTest extends TestCase {
     @Test
     @SuppressWarnings("deprecation")
     public void testMapReduceInlineSecondary() throws Exception {
-        Mongo mongo = new MongoClient(Arrays.asList(new ServerAddress("127.0.0.1", 27017), new ServerAddress("127.0.0.1", 27018)),
-                MongoClientOptions.builder().writeConcern(WriteConcern.UNACKNOWLEDGED).build());
-
-        if (isStandalone(mongo)) {
+        if (!isReplicaSet(cleanupMongo)) {
             return;
         }
 
-        throw new SkipException("Not testing mapreduce on secondaries since that's disabled right now.");
-        /*
+        Mongo mongo = new MongoClient(asList(new ServerAddress("127.0.0.1", 27017), new ServerAddress("127.0.0.1", 27018)),
+                MongoClientOptions.builder().writeConcern(WriteConcern.UNACKNOWLEDGED).build());
+
         int size = getReplicaSetSize(mongo);
-        DBCollection c = mongo.getDB(_db.getName()).getCollection( "imr2" );
+        DBCollection c = mongo.getDB(getDatabase().getName()).getCollection( "imr2" );
         //c.setReadPreference(ReadPreference.SECONDARY);
         c.slaveOk();
         c.drop();
 
         c.save( new BasicDBObject( "x" , new String[]{ "a" , "b" } ) );
-        c.save( new BasicDBObject( "x" , new String[]{ "b" , "c" } ) );
-        WriteResult wr = c.save( new BasicDBObject( "x" , new String[]{ "c" , "d" } ) );
+        c.save(new BasicDBObject("x", new String[]{"b", "c"}));
+        WriteResult wr = c.save(new BasicDBObject("x", new String[]{"c", "d"}));
         if (mongo.getReplicaSetStatus() != null  && mongo.getReplicaSetStatus().getName() != null) {
             wr.getLastError(new WriteConcern(size));
         }
@@ -540,19 +524,18 @@ public class JavaClientTest extends TestCase {
         assertEquals( 1 , m.get( "d" ).intValue() );
         ReplicaSetStatus replStatus = mongo.getReplicaSetStatus();
         //if it is a replicaset, and there is no master, or master is not the secondary
-        if( replStatus!= null && replStatus.getName() != null && ((replStatus.getMaster() == null) || (replStatus.getMaster() != null && !replStatus.getMaster().equals(replStatus.getASecondary()))))
-            assertTrue( !mongo.getReplicaSetStatus().isMaster( out.getCommandResult().getServerUsed() ),
-            		"Had a replicaset but didn't use secondary! replSetStatus : " + mongo.getReplicaSetStatus() + " \n Used: " + out.getCommandResult().getServerUsed() + " \n ");
-        */
+// TODO
+//        if( replStatus!= null && replStatus.getName() != null && ((replStatus.getMaster() == null) || (replStatus.getMaster() != null && !replStatus.getMaster().equals(replStatus.getASecondary()))))
+//            assertTrue( !mongo.getReplicaSetStatus().isMaster( out.getCommandResult().getServerUsed() ),
+//            		"Had a replicaset but didn't use secondary! replSetStatus : " + mongo.getReplicaSetStatus() + " \n Used: " + out.getCommandResult().getServerUsed() + " \n ");
     }
 
     @Test
     public void testMapReduceInlineWScope(){
-        DBCollection c = _db.getCollection( "jmr2" );
-        c.drop();
+        DBCollection c = collection;
 
         c.save( new BasicDBObject( "x" , new String[]{ "a" , "b" } ) );
-        c.save( new BasicDBObject( "x" , new String[]{ "b" , "c" } ) );
+        c.save(new BasicDBObject("x", new String[]{"b", "c"}));
         c.save( new BasicDBObject( "x" , new String[]{ "c" , "d" } ) );
 
         Map<String, Object> scope = new HashMap<String, Object>();
@@ -574,15 +557,38 @@ public class JavaClientTest extends TestCase {
         assertEquals( 1 , m.get( "d" ).intValue() );
 
     }
-    
+
+    @Test
+    public void testMapReduceExecutionTimeout() {
+        assumeFalse(isSharded(getMongoClient()));
+        checkServerVersion(2.5);
+
+        String map = "function(){ for ( var i=0; i<this.x.length; i++ ){ emit( this.x[i] , 1 ); } }";
+        String reduce = "function(key,values){ var sum=0; for( var i=0; i<values.length; i++ ) sum += values[i]; return sum;}";
+
+        enableMaxTimeFailPoint();
+        DBCollection c = collection;
+        c.insert(new BasicDBObject("x", 1));
+        try {
+            final MapReduceCommand command = new MapReduceCommand(c, map, reduce, null, MapReduceCommand.OutputType.INLINE,
+                                                                  new BasicDBObject());
+            command.setMaxTime(1, TimeUnit.SECONDS);
+            c.mapReduce(command);
+            fail("Show have thrown");
+        } catch (MongoExecutionTimeoutException e) {
+            assertEquals(50, e.getCode());
+        } finally {
+            disableMaxTimeFailPoint();
+        }
+    }
+
     @Test
     public void testAggregation(){
         if (!serverIsAtLeastVersion(2.1)) {
             return;
         }
 
-        DBCollection c = _db.getCollection( "aggregationTest" );
-        c.drop();
+        DBCollection c = collection;
         
         DBObject foo = new BasicDBObject( "name" , "foo" ) ;
         DBObject bar = new BasicDBObject( "name" , "bar" ) ;
@@ -636,8 +642,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testMulti(){
-        DBCollection c = _db.getCollection( "multi1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( BasicDBObjectBuilder.start( "_id" , 1 ).add( "x" , 1 ).get() );
         c.insert( BasicDBObjectBuilder.start( "_id" , 2 ).add( "x" , 5 ).get() );
@@ -657,25 +662,18 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testAuthenticate() throws UnknownHostException {
-        assertEquals( "26e3d12bd197368526409177b3e8aab6" , _db._hash( "e" , "j".toCharArray() ) );
+        assertEquals( "26e3d12bd197368526409177b3e8aab6" , getDatabase()._hash( "e" , "j".toCharArray() ) );
 
         Mongo m = new MongoClient();
-        if (m.isMongosConnection()) {
-            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
-        }
-        DB db = m.getDB(cleanupDB);
-        DBCollection usersCollection = db.getCollection( "system.users" );
+        assumeFalse(m.isMongosConnection());
+        DB db = m.getDB(getDatabase().getName());
 
         try {
-            usersCollection.remove(new BasicDBObject());
-            assertEquals(0, usersCollection.find().count());
-
-            db.addUser("xx" , "e".toCharArray() );
-            assertEquals(1, usersCollection.find().count());
+            db.addUser("xx", "e".toCharArray());
 
             assertEquals(false, db.authenticate( "xx" , "f".toCharArray() ) );
             assertNull(db.getAuthenticationCredentials());
-            assertNull(_mongo.getAuthority().getCredentialsStore().get(db.getName()));
+            assertNull(m.getAuthority().getCredentialsStore().get(db.getName()));
             assertEquals(true, db.authenticate("xx", "e".toCharArray()));
             assertEquals(MongoCredential.createMongoCRCredential("xx", db.getName(), "e".toCharArray()), db.getAuthenticationCredentials());
             assertEquals(db.getAuthenticationCredentials(), m.getAuthority().getCredentialsStore().get(db.getName()));
@@ -689,151 +687,87 @@ public class JavaClientTest extends TestCase {
             }
         }
         finally {
-            usersCollection.remove( new BasicDBObject() );
+            db.removeUser("xx");
             m.close();
         }
     }
 
     @Test
     public void testAuthenticateCommand() throws UnknownHostException {
-        Mongo m = new MongoClient();
-        if (m.isMongosConnection()) {
-            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
-        }
-        DB db = m.getDB(cleanupDB);
-        DBCollection usersCollections = db.getCollection( "system.users" );
-
         try {
-            usersCollections.remove(new BasicDBObject());
-            assertEquals(0, usersCollections.find().count());
+            getDatabase().addUser("xx", "e".toCharArray());
 
-            db.addUser("xx", "e".toCharArray());
-            assertEquals(1, usersCollections.find().count());
-
+            MongoClient m = new MongoClient();
+            assumeFalse(m.isMongosConnection());
             try {
-                db.authenticateCommand( "xx" , "f".toCharArray());
-                fail("Auth should have failed");
-            } catch (CommandFailureException e) {
-                // all good
-            }
-            assertTrue(db.authenticateCommand("xx", "e".toCharArray()).ok());
-            assertTrue(db.authenticateCommand("xx", "e".toCharArray()).ok());
-            try {
-                db.authenticateCommand("xx", "f".toCharArray());
-                fail("can't auth with different credentials");
-            } catch (IllegalStateException e) {
-                // all good;
+                DB db = m.getDB(getDatabase().getName());
+                try {
+                    db.authenticateCommand( "xx" , "f".toCharArray());
+                    fail("Auth should have failed");
+                } catch (CommandFailureException e) {
+                    // all good
+                }
+                assertTrue(db.authenticateCommand("xx", "e".toCharArray()).ok());
+                assertTrue(db.authenticateCommand("xx", "e".toCharArray()).ok());
+                try {
+                    db.authenticateCommand("xx", "f".toCharArray());
+                    fail("can't auth with different credentials");
+                } catch (IllegalStateException e) {
+                    // all good;
+                }
+            } finally {
+                m.close();
             }
         }
         finally {
-            usersCollections.remove(new BasicDBObject());
-            m.close();
-        }
-    }
-
-    @Test
-    public void testAuthenticateWithCredentialsInURIAndNoDatabase() throws UnknownHostException {
-        // First add the user
-        Mongo m = new MongoClient(new MongoClientURI("mongodb://localhost"));
-        if (m.isMongosConnection()) {
-            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
-        }
-        DB db = m.getDB("admin");
-        DBCollection usersCollection = db.getCollection( "system.users" );
-        try {
-            usersCollection.remove(new BasicDBObject());
-            assertEquals(0, usersCollection.find().count());
-
-            db.addUser("xx", "e".toCharArray());
-            assertEquals(1, usersCollection.find().count());
-        }
-        finally {
-            m.close();
-        }
-
-        m = new MongoClient(new MongoClientURI("mongodb://xx:e@localhost"));
-        db = m.getDB("admin");
-
-        try {
-            assertNotNull(db.getAuthenticationCredentials());
-            assertEquals(true, db.authenticate("xx", "e".toCharArray()) );
-        }
-        finally {
-            db.getCollection( "system.users" ).remove(new BasicDBObject());
-            m.close();
+            getDatabase().removeUser("xx");
         }
     }
 
     @Test
     public void testAuthenticateWithCredentialsInURI() throws UnknownHostException {
-        // First add the user
-        Mongo m = new MongoClient(new MongoClientURI("mongodb://localhost"));
-        if (m.isMongosConnection()) {
-            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
-        }
-        DB db = m.getDB(cleanupDB);
-        DBCollection usersCollection = db.getCollection( "system.users" );
-        try {
-            usersCollection.remove(new BasicDBObject());
-            assertEquals(0, usersCollection.find().count());
-
-            db.addUser("xx", "e".toCharArray());
-            assertEquals(1, usersCollection.find().count());
-        }
-        finally {
-            m.close();
-        }
-
-        m = new MongoClient(new MongoClientURI("mongodb://xx:e@localhost/" + cleanupDB));
-        db = m.getDB(cleanupDB);
+        getDatabase().addUser("xx", "e".toCharArray());
 
         try {
-            assertNotNull(db.getAuthenticationCredentials());
-            assertEquals(true, db.authenticate("xx", "e".toCharArray()) );
-        }
-        finally {
-            db.getCollection( "system.users" ).remove(new BasicDBObject());
-            m.close();
+            MongoClient m = new MongoClient(new MongoClientURI("mongodb://xx:e@localhost/" + getDatabase().getName()));
+            assumeFalse(m.isMongosConnection());
+            try {
+                DB db = m.getDB(getDatabase().getName());
+                assertNotNull(db.getAuthenticationCredentials());
+                assertEquals(true, db.authenticate("xx", "e".toCharArray()) );
+            }
+            finally {
+                m.close();
+            }
+        } finally {
+            getDatabase().removeUser("xx");
         }
     }
 
     @Test
     public void testAuthenticateCommandWithCredentialsInURI() throws UnknownHostException {
-        // First add the user
-        Mongo m = new MongoClient(new MongoClientURI("mongodb://localhost"));
-        if (m.isMongosConnection()) {
-            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
-        }
-        DB db = m.getDB(cleanupDB);
-        DBCollection usersCollection = db.getCollection( "system.users" );
-        try {
-            usersCollection.remove(new BasicDBObject());
-            assertEquals(0, usersCollection.find().count());
-
-            db.addUser("xx", "e".toCharArray());
-            assertEquals(1, usersCollection.find().count());
-        }
-        finally {
-            m.close();
-        }
-
-        m = new MongoClient(new MongoClientURI("mongodb://xx:e@localhost/" + cleanupDB));
-        db = m.getDB(cleanupDB);
+        getDatabase().addUser("xx", "e".toCharArray());
 
         try {
-            assertNotNull(db.getAuthenticationCredentials());
-            assertTrue(db.authenticateCommand("xx", "e".toCharArray()).ok());
+            MongoClient m = new MongoClient(new MongoClientURI("mongodb://xx:e@localhost/" + getDatabase().getName()));
+            assumeFalse(m.isMongosConnection());
+            try {
+                DB db = m.getDB(getDatabase().getName());
+
+                assertNotNull(db.getAuthenticationCredentials());
+                assertTrue(db.authenticateCommand("xx", "e".toCharArray()).ok());
+            } finally {
+                m.close();
+            }
         }
         finally {
-            db.getCollection( "system.users" ).remove(new BasicDBObject());
-            m.close();
+            getDatabase().removeUser("xx");
         }
     }
 
     @Test
     public void testTransformers(){
-        DBCollection c = _db.getCollection( "tt" );
-        c.drop();
+        DBCollection c = collection;
 
         c.save( BasicDBObjectBuilder.start( "_id" , 1 ).add( "x" , 1.1 ).get() );
         assertEquals( Double.class , c.findOne().get( "x" ).getClass() );
@@ -864,11 +798,10 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testObjectIdCompat(){
-        DBCollection c = _db.getCollection( "oidc" );
-        c.drop();
+        DBCollection c = collection;
 
         c.save( new BasicDBObject( "x" , 1 ) );
-        _db.eval( "db.oidc.insert( { x : 2 } );" );
+        getDatabase().eval("return db." + collection.getName() + ".insert( { x : 2 } );");
 
         List<DBObject> l = c.find().toArray();
         assertEquals( 2 , l.size() );
@@ -876,30 +809,27 @@ public class JavaClientTest extends TestCase {
         ObjectId a = (ObjectId)(l.get(0).get("_id"));
         ObjectId b = (ObjectId)(l.get(1).get("_id"));
 
-        assertLess( Math.abs( a.getTime() - b.getTime() ) , 10000 );
+        assertTrue(Math.abs(a.getTime() - b.getTime()) < 10000);
     }
 
     @Test
     public void testObjectIdCompat2(){
-        DBCollection c = _db.getCollection( "oidc" );
-        c.drop();
+        DBCollection c = collection;
 
-        c.save( new BasicDBObject( "x" , 1 ) );
+        c.save(new BasicDBObject("x", 1));
 
-        String o = (String) _db.eval( "return db.oidc.findOne()._id.toString()" );
+        String o = (String) getDatabase().eval( "return db." + collection.getName() + ".findOne()._id.toString()" );
         // printing on servers has changed in 2.1
         if (o.startsWith("ObjectId"))
-            o = (String) _db.eval( "return db.oidc.findOne()._id.valueOf()" );
+            o = (String) getDatabase().eval( "return db." + collection.getName() + ".findOne()._id.valueOf()" );
         String x = c.findOne().get( "_id" ).toString();
         assertEquals( x , o );
     }
 
-
     @Test
-    public void testLargeBulkInsert(){
-        // max size should be obtained from server
-        int maxObjSize = _mongo.getMaxBsonObjectSize();
-        DBCollection c = _db.getCollection( "largebulk" );
+    public void testBatchInsertSplitting(){
+        int maxObjSize = getMongoClient().getMaxBsonObjectSize();
+        DBCollection c = collection;
         c.drop();
         String s = "asdasdasd";
         while ( s.length() < 10000 )
@@ -913,10 +843,15 @@ public class JavaClientTest extends TestCase {
                    .add( "x" , s )
                    .get() );
         }
-        assertEquals( 0 , c.find().count() );
         c.insert( l );
         assertEquals(num, c.find().count());
+    }
 
+    @Test
+    public void testOversizedDocumentFailure() {
+        int maxObjSize = getMongoClient().getMaxBsonObjectSize();
+        DBCollection c = collection;
+        c.drop();
         try {
             c.save( new BasicDBObject( "foo" , new Binary(new byte[maxObjSize]) ) );
             fail("Should not be able to save an object larger than maximum bson object size of " + maxObjSize);
@@ -924,13 +859,12 @@ public class JavaClientTest extends TestCase {
         catch ( MongoInternalException ie ) {
             assertEquals(-3, ie.getCode());
         }
-        assertEquals( num , c.find().count() );
+        assertEquals(0, c.find().count());
     }
 
     @Test
     public void testUpdate5(){
-        DBCollection c = _db.getCollection( "udpate5" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( new BasicDBObject( "x" , 5) );
         assertEquals(Integer.class, c.findOne().get("x").getClass());
@@ -945,63 +879,110 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testIn(){
-        DBCollection c = _db.getCollection( "in1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( new BasicDBObject( "x" , 1 ) );
-        c.insert( new BasicDBObject( "x" , 2 ) );
+        c.insert(new BasicDBObject("x", 2));
         c.insert(new BasicDBObject("x", 3));
         c.insert(new BasicDBObject("x", 4));
 
         List<DBObject> a = c.find( new BasicDBObject( "x" , new BasicDBObject( "$in" , new Integer[]{ 2 , 3 } ) ) ).toArray();
-        assertEquals( 2 , a.size() );
+        assertEquals(2, a.size());
     }
 
     @Test
     public void testWriteResultWithGetLastErrorWithDifferentConcerns(){
-        DBCollection c = _db.getCollection( "writeresultwfle1" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( new BasicDBObject( "_id" , 1 ) );
-        WriteResult res = c.update( new BasicDBObject( "_id" , 1 ) , new BasicDBObject( "$inc" , new BasicDBObject( "x" , 1 ) ) );
+        WriteResult res = c.update( new BasicDBObject( "_id" , 1 ) , new BasicDBObject( "$inc" , new BasicDBObject( "x" , 1 ) ),
+                                    false, false, WriteConcern.UNACKNOWLEDGED);
         assertEquals( 1 , res.getN() );
-        assertTrue( res.isLazy() );
+        assertTrue(res.isLazy());
 
         CommandResult cr = res.getLastError( WriteConcern.FSYNC_SAFE );
         assertEquals( 1 , cr.getInt( "n" ) );
-        assertTrue(cr.containsField("fsyncFiles") || cr.containsField("waited"));
 
         CommandResult cr2 = res.getLastError( WriteConcern.FSYNC_SAFE );
         assertTrue( cr == cr2 );
 
         CommandResult cr3 = res.getLastError( WriteConcern.NONE );
         assertTrue( cr3 == cr );
-
     }
 
     @Test
-    public void testWriteResult(){
-        DBCollection c = _db.getCollection( "writeresult1" );
-        c.drop();
+    public void testWriteResultOnUnacknowledgedUpdate(){
+        collection.insert(new BasicDBObject("_id", 1));
+        WriteResult res = collection.update(new BasicDBObject("_id", 1), new BasicDBObject("$inc", new BasicDBObject("x", 1)),
+                                   false, false, WriteConcern.UNACKNOWLEDGED);
+        assertEquals(1, res.getN());
+        assertTrue(res.isLazy());
+    }
 
-        c.insert( new BasicDBObject( "_id" , 1 ) );
-        WriteResult res = c.update( new BasicDBObject( "_id" , 1 ) , new BasicDBObject( "$inc" , new BasicDBObject( "x" , 1 ) ) );
-        assertEquals( 1 , res.getN() );
-        assertTrue( res.isLazy() );
+    @Test
+    public void testWriteResultOnInsert(){
+        WriteResult res = collection.insert(new BasicDBObject());
+        assertEquals(0, res.getN());
+        assertFalse(res.isUpdateOfExisting());
+        assertNull(res.getUpsertedId());
+        assertFalse(res.isLazy());
+    }
 
-        c.setWriteConcern( WriteConcern.SAFE);
-        res = c.update( new BasicDBObject( "_id" , 1 ) , new BasicDBObject( "$inc" , new BasicDBObject( "x" , 1 ) ) );
-        assertEquals( 1 , res.getN() );
-        assertFalse( res.isLazy() );
+    @Test
+    public void testWriteResultOnInsertList(){
+        WriteResult res = collection.insert(Arrays.<DBObject>asList(new BasicDBObject(), new BasicDBObject()));
+        assertEquals(0, res.getN());
+        assertFalse(res.isUpdateOfExisting());
+        assertNull(res.getUpsertedId());
+        assertFalse(res.isLazy());
+    }
+
+    @Test
+    public void testWriteResultOnUpdate(){
+        collection.insert(new BasicDBObject("_id", 1));
+        WriteResult res = collection.update(new BasicDBObject("_id", 1), new BasicDBObject("$inc", new BasicDBObject("x", 1)));
+        assertEquals(1, res.getN());
+        assertTrue(res.isUpdateOfExisting());
+        assertNull(res.getUpsertedId());
+        assertFalse(res.isLazy());
+    }
+
+    @Test
+    public void testWriteResultOnUpdateWhenNoDocumentsMatch(){
+        WriteResult res = collection.update(new BasicDBObject("_id", 1), new BasicDBObject("$inc", new BasicDBObject("x", 1)));
+        assertEquals(0, res.getN());
+        assertFalse(res.isUpdateOfExisting());
+        assertNull(res.getUpsertedId());
+        assertFalse(res.isLazy());
+    }
+
+    @Test
+    public void testWriteResultOnUpsert(){
+        ObjectId id = new ObjectId();
+        collection.insert(new BasicDBObject("_id", 1));
+        WriteResult res = collection.update(new BasicDBObject("_id", id), new BasicDBObject("$inc", new BasicDBObject("x", 1)), true, false);
+        assertEquals(1, res.getN());
+        assertFalse(res.isUpdateOfExisting());
+        assertEquals(id, res.getUpsertedId());
+    }
+
+    @Test
+    public void testWriteResultOnRemove() {
+        collection.insert(new BasicDBObject("_id", 1));
+        collection.insert(new BasicDBObject("_id", 2));
+        WriteResult res = collection.remove(new BasicDBObject());
+        assertEquals(2, res.getN());
+        assertFalse(res.isUpdateOfExisting());
+        assertNull(res.getUpsertedId());
     }
 
     @Test
     public void testWriteResultMethodLevelWriteConcern(){
-        DBCollection c = _db.getCollection( "writeresult2" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( new BasicDBObject( "_id" , 1 ) );
-        WriteResult res = c.update( new BasicDBObject( "_id" , 1 ) , new BasicDBObject( "$inc" , new BasicDBObject( "x" , 1 ) ) );
+        WriteResult res = c.update( new BasicDBObject( "_id" , 1 ) , new BasicDBObject( "$inc" , new BasicDBObject( "x" , 1 ) ),
+                                    false, false, WriteConcern.UNACKNOWLEDGED);
         assertEquals( 1 , res.getN() );
         assertTrue(res.isLazy());
 
@@ -1040,8 +1021,7 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testFindAndModify(){
-        DBCollection c = _db.getCollection( "findandmodify" );
-        c.drop();
+        DBCollection c = collection;
 
         c.insert( new BasicDBObject( "_id" , 1 ) );
         //return old one
@@ -1099,23 +1079,23 @@ public class JavaClientTest extends TestCase {
 
     @Test
     public void testGetCollectionFromString(){
-        DBCollection c = _db.getCollectionFromString( "foo" );
+        DBCollection c = getDatabase().getCollectionFromString( "foo" );
         assertEquals( "foo" , c.getName() );
 
-        c = _db.getCollectionFromString( "foo.bar" );
+        c = getDatabase().getCollectionFromString( "foo.bar" );
         assertEquals( "foo.bar" , c.getName() );
 
-        c = _db.getCollectionFromString( "foo.bar.zoo" );
+        c = getDatabase().getCollectionFromString( "foo.bar.zoo" );
         assertEquals( "foo.bar.zoo" , c.getName() );
 
-        c = _db.getCollectionFromString( "foo.bar.zoo.dork" );
+        c = getDatabase().getCollectionFromString( "foo.bar.zoo.dork" );
         assertEquals( "foo.bar.zoo.dork" , c.getName() );
 
     }
 
     @Test
     public void testBadKey(){
-        DBCollection c = _db.getCollectionFromString( "foo" );
+        DBCollection c = getDatabase().getCollectionFromString( "foo" );
         assertEquals( "foo" , c.getName() );
 
         try {
@@ -1153,7 +1133,7 @@ public class JavaClientTest extends TestCase {
         } catch (IllegalArgumentException e) {}
 
         try {
-            final List<BasicDBObject> list = Arrays.asList(new BasicDBObject("$a", 1));
+            final List<BasicDBObject> list = asList(new BasicDBObject("$a", 1));
             c.save(new BasicDBObject("a", list));
             fail("Bad key was accepted");
         } catch (IllegalArgumentException e) {}
@@ -1170,13 +1150,13 @@ public class JavaClientTest extends TestCase {
         } catch (IllegalArgumentException e) {}
 
         // this should work because it's a query
-        c.update(new BasicDBObject("a", 1), new BasicDBObject("$set", new BasicDBObject("a.b", 1)));
+        c.update(new BasicDBObject("a", 1), new BasicDBObject("$set", new BasicDBObject("a.b", 1)), false, false,
+                 WriteConcern.UNACKNOWLEDGED);
     }
 
     @Test
     public void testAllTypes(){
-        DBCollection c = _db.getCollectionFromString( "foo" );
-        c.drop();
+        DBCollection c = collection;
         String json = "{ 'str' : 'asdfasd' , 'long' : 5 , 'float' : 0.4 , 'bool' : false , 'date' : { '$date' : '2011-05-18T18:56:00Z'} , 'pat' : { '$regex' : '.*' , '$options' : ''} , 'oid' : { '$oid' : '4d83ab3ea39562db9c1ae2ae'} , 'ref' : { '$ref' : 'test.test' , '$id' : { '$oid' : '4d83ab59a39562db9c1ae2af'}} , 'code' : { '$code' : 'asdfdsa'} , 'codews' : { '$code' : 'ggggg' , '$scope' : { }} , 'ts' : { '$ts' : 1300474885 , '$inc' : 10} , 'null' :  null, 'uuid' : { '$uuid' : '60f65152-6d4a-4f11-9c9b-590b575da7b5' }}";
         BasicDBObject a = (BasicDBObject) JSON.parse(json);
         c.insert(a);
@@ -1191,13 +1171,5 @@ public class JavaClientTest extends TestCase {
         Mongo m2 = Mongo.Holder.singleton().connect( new MongoURI( "mongodb://localhost" ) );
 
         assertEquals( m1, m2);
-    }
-    final Mongo _mongo;
-    final DB _db;
-
-    public static void main( String args[] )
-        throws Exception {
-        JavaClientTest ct = new JavaClientTest();
-        ct.runConsole();
     }
 }

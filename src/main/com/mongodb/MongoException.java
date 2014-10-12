@@ -1,24 +1,26 @@
-// MongoException.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// MongoException.java
 
 package com.mongodb;
 
 import org.bson.BSONObject;
+
+import java.io.IOException;
 
 /**
  * A general exception raised in Mongo
@@ -52,7 +54,7 @@ public class MongoException extends RuntimeException {
      * @param t the throwable cause
      */
     public MongoException( String msg , Throwable t ){
-        super( msg , _massage( t ) );
+        super( msg , t );
         _code = -4;
     }
 
@@ -63,10 +65,10 @@ public class MongoException extends RuntimeException {
      * @param t the throwable cause
      */
     public MongoException( int code , String msg , Throwable t ){
-        super( msg , _massage( t ) );
+        super( msg , t );
         _code = code;
     }
-    
+
     /**
      * Creates a MongoException from a BSON object representing an error
      * @param o
@@ -82,89 +84,70 @@ public class MongoException extends RuntimeException {
         return new MongoException( ServerError.getCode( o ) , s );
     }
 
-
-    static Throwable _massage( Throwable t ){
-        if ( t instanceof Network )
-            return ((Network)t)._ioe;
-        return t;
-    }
-
     /**
-     * Subclass of MongoException representing a network-related exception
+     * Subclass of MongoException representing a network-related exception.
+     *
+     * @deprecated This class will be dropped in 3.x versions.
+     *             Please catch {@link MongoSocketException} instead.
      */
-    public static class Network extends MongoException {
+    @Deprecated
+    public static class Network extends MongoSocketException {
 
-        private static final long serialVersionUID = -4415279469780082174L;
+        private static final long serialVersionUID = 8364298902504372967L;
 
         /**
-         * 
          * @param msg the message
          * @param ioe the cause
          */
-        public Network( String msg , java.io.IOException ioe ){
-            super( -2 , msg , ioe );
-            _ioe = ioe;
+        public Network(String msg, IOException ioe) {
+            super(msg, ioe);
         }
 
         /**
-         * 
          * @param ioe the cause
          */
-        public Network( java.io.IOException ioe ){
-            super( ioe.toString() , ioe );
-            _ioe = ioe;
+        public Network(IOException ioe) {
+            super(ioe);
         }
-        
-        final java.io.IOException _ioe;
     }
 
     /**
-     * Subclass of WriteConcernException representing a duplicate key error
+     * Subclass of WriteConcernException representing a duplicate key error.
+     *
+     * @deprecated This class will be dropped in 3.x versions.
+     *             Please catch {@link DuplicateKeyException} instead.
      */
-    public static class DuplicateKey extends WriteConcernException {
+    @Deprecated
+    public static class DuplicateKey extends DuplicateKeyException {
 
-        private static final long serialVersionUID = -4415279469780082174L;
+        private static final long serialVersionUID = 6557680785576001838L;
 
         public DuplicateKey(final CommandResult commandResult) {
             super(commandResult);
+        }
+
+        DuplicateKey(final int code, final CommandResult commandResult) {
+            super(code, commandResult);
         }
     }
 
     /**
      * Subclass of MongoException representing a cursor-not-found exception
+     *
+     * @deprecated This class will be dropped in 3.x versions.
+     *             Please catch {@link MongoCursorNotFoundException} instead.
      */
-    public static class CursorNotFound extends MongoException {
-        
-        private static final long serialVersionUID = -4415279469780082174L;
+    @Deprecated
+    public static class CursorNotFound extends MongoCursorNotFoundException {
 
-        private final long cursorId;
-        private final ServerAddress serverAddress;
+        private static final long serialVersionUID = -3759595395830412426L;
 
         /**
-         *
-         * @param cursorId cursor
+         * @param cursorId      cursor
          * @param serverAddress server address
          */
-        public CursorNotFound(long cursorId, ServerAddress serverAddress){
-            super( -5 , "cursor " + cursorId + " not found on server " + serverAddress );
-            this.cursorId = cursorId;
-            this.serverAddress = serverAddress;
-        }
-
-        /**
-         * Get the cursor id that wasn't found.
-         * @return
-         */
-        public long getCursorId() {
-            return cursorId;
-        }
-
-        /**
-         * The server address where the cursor is.
-         * @return
-         */
-        public ServerAddress getServerAddress() {
-            return serverAddress;
+        public CursorNotFound(long cursorId, ServerAddress serverAddress) {
+            super(cursorId, serverAddress);
         }
     }
 

@@ -1,28 +1,34 @@
-// DBRefBase.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// DBRefBase.java
 
 package com.mongodb;
 
+import java.io.Serializable;
+
 /**
- * represents a database reference, which points to an object stored in the database
+ * Represents a database reference, which points to an object stored in the database.
+ * <p>
+ * While instances of this class are {@code Serializable}, deserialized instances can not be fetched,
+ * as the {@code db} property is transient.
  */
-public class DBRefBase {
-    
+public class DBRefBase implements Serializable {
+
+    private static final long serialVersionUID = 3031885741395465814L;
 
     /**
      * Creates a DBRefBase
@@ -37,8 +43,17 @@ public class DBRefBase {
     }
 
     /**
+     * For use only with serialization framework.
+     */
+    protected DBRefBase() {
+        _id = null;
+        _ns = null;
+        _db = null;
+    }
+
+    /**
      * fetches the object referenced from the database
-     * @return
+     * @return the referenced document
      * @throws MongoException
      */
     public DBObject fetch() throws MongoException {
@@ -46,7 +61,7 @@ public class DBRefBase {
             return _pointedTo;
 
         if (_db == null)
-            throw new RuntimeException("no db");
+            throw new MongoInternalException("no db");
 
         final DBCollection coll = _db.getCollectionFromString(_ns);
 
@@ -62,7 +77,7 @@ public class DBRefBase {
 
     /**
      * Gets the object's id
-     * @return
+     * @return the id of the reference
      */
     public Object getId() {
         return _id;
@@ -70,15 +85,17 @@ public class DBRefBase {
 
     /**
      * Gets the object's namespace (collection name)
-     * @return
+     * @return the name of the collection in which the reference is stored
      */
     public String getRef() {
         return _ns;
     }
 
     /**
-     * Gets the database
-     * @return
+     * Gets the database, which may be null, in which case the reference can not be fetched.
+     *
+     * @return the database
+     * @see #fetch()
      */
     public DB getDB() {
         return _db;
@@ -106,7 +123,7 @@ public class DBRefBase {
 
     final Object _id;
     final String _ns;
-    final DB _db;
+    final transient DB _db;
 
     private boolean _loadedPointedTo = false;
     private DBObject _pointedTo;

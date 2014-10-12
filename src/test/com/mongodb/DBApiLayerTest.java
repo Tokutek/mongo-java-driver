@@ -1,10 +1,10 @@
 /*
- * Copyright (c) 2008 - 2013 10gen, Inc. <http://10gen.com>
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -12,34 +12,34 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.mongodb;
 
 import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
-import org.testng.SkipException;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Arrays;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeFalse;
 
 public class DBApiLayerTest extends TestCase {
     private final DBApiLayer db;
 
     public DBApiLayerTest() throws IOException, MongoException {
         super();
-        cleanupDB = "com_mongodb_unittest_DBApiLayerTest";
-        db = (DBApiLayer) cleanupMongo.getDB( cleanupDB );
+        db = (DBApiLayer) getDatabase();
     }
 
     @Test
     public void testCursorNotFoundException() {
         // mongos returns a differently formatted "cursor not found" error
         // than this test expects.
-        if (db.getMongo().isMongosConnection()) {
-            throw new SkipException("test disabled on mongos");
-        }
+        assumeFalse(isSharded(getMongoConnection()));
         DBCollection collection = db.getCollection("testCursorNotFoundException");
         for (int i = 0; i < 150; i++) {
             collection.insert(new BasicDBObject());
@@ -58,6 +58,17 @@ public class DBApiLayerTest extends TestCase {
         } catch (MongoException.CursorNotFound e) {
             assertEquals(cursor.getServerAddress(), e.getServerAddress());
             assertEquals(cursor.getCursorId(), e.getCursorId());
+        } catch (MongoException e) {
+            // older mongos implementations incorrectly set the query failure bit
+            assertTrue(isSharded(getMongoClient()) && !serverIsAtLeastVersion(2.5));
         }
     }
+
+    @Test(expected =  MongoException.class)
+    public void testQueryFailureException() {
+        DBCollection collection = db.getCollection("testQueryFailureException");
+        collection.insert(new BasicDBObject("loc", new double[]{0, 0}));
+        collection.findOne(new BasicDBObject("loc", new BasicDBObject("$near", new double[]{0, 0})));
+    }
+
 }

@@ -1,11 +1,11 @@
-/**
- * Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,16 +16,16 @@
 
 package com.mongodb;
 
-// Mongo
-
 import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
-import org.testng.SkipException;
+import org.junit.Ignore;
+import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-// Java
+import static java.lang.String.format;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
 
 public class SecondaryReadTest extends TestCase {
 
@@ -37,18 +37,17 @@ public class SecondaryReadTest extends TestCase {
     /**
      * Assert that the percentage of reads to each secondary does not deviate by more than 1 %
      */
-    @Test(groups = {"basic"})
+    @Test
+    @Ignore
     public void testSecondaryReadBalance() throws Exception {
+        if (!isReplicaSet(cleanupMongo)) {
+            return;
+        }
 
         final Mongo mongo = loadMongo();
 
         try {
-            if (isStandalone(mongo)) {
-                return;
-            }
-            if (mongo.isMongosConnection()) {
-                throw new SkipException("test disabled on mongos");
-            }
+            assumeFalse(isSharded(mongo));
 
             final List<TestHost> testHosts = extractHosts(mongo);
 
@@ -75,16 +74,15 @@ public class SecondaryReadTest extends TestCase {
     /**
      * Assert that secondary reads actually are routed to a secondary
      */
-    @Test(groups = {"basic"})
+    @Test
     public void testSecondaryReadCursor() throws Exception {
+        if (!isReplicaSet(cleanupMongo)) {
+            return;
+        }
+
         final Mongo mongo = loadMongo();
         try {
-            if (isStandalone(mongo)) {
-                return;
-            }
-            if (mongo.isMongosConnection()) {
-                throw new SkipException("test disabled on mongos");
-            }
+            assumeFalse(isSharded(mongo));
 
             final List<TestHost> testHosts = extractHosts(mongo);
 
@@ -110,7 +108,7 @@ public class SecondaryReadTest extends TestCase {
     }
 
   /*
-    @Test(groups = {"basic"})
+    @Test
     public void testSecondaryCalls() throws Exception{
     	final Mongo mongo = loadMongo();
     	
@@ -152,17 +150,7 @@ public class SecondaryReadTest extends TestCase {
 
     }
     */
-    
-    private void confirmSecondary(DB db, List<TestHost> pHosts) throws Exception{
-    	String server = db.getLastError().getString("serverUsed");
-    	String[] ipPort = server.split("[/:]");
-    	
-    	ServerAddress servAddress = new ServerAddress(ipPort[0], Integer.parseInt(ipPort[2]));
-    	
-    	assertTrue(serverIsSecondary(servAddress, pHosts));
-    	
-    }
-    
+
     private boolean serverIsSecondary(final ServerAddress pServerAddr, final List<TestHost> pHosts) {
         for (final TestHost h : pHosts) {
             if (!h.stateStr.equals("SECONDARY"))
@@ -206,7 +194,7 @@ public class SecondaryReadTest extends TestCase {
 
     private DBCollection loadCleanDbCollection(final Mongo pMongo) {
         getDatabase(pMongo).dropDatabase();
-        final DB db = getDatabase(pMongo);;
+        final DB db = getDatabase(pMongo);
         return db.getCollection("testBalance");
     }
     
@@ -217,7 +205,7 @@ public class SecondaryReadTest extends TestCase {
     private void insertTestData(final DBCollection pCol, WriteConcern writeConcern) throws Exception {
         // Insert some test data.
         for (int idx=0; idx < 1000; idx++) {
-            WriteConcern curWriteConcern = (idx < 999) ? WriteConcern.NONE : writeConcern;
+            WriteConcern curWriteConcern = (idx < 999) ? WriteConcern.UNACKNOWLEDGED : writeConcern;
             WriteResult writeResult = pCol.insert(new BasicDBObject(), curWriteConcern);
             writeResult.getLastError().throwOnError();
         }
@@ -248,13 +236,16 @@ public class SecondaryReadTest extends TestCase {
             } else {
                 deviation = (double)100 - (((double)queriesExecuted / (double)expectedPerSecondary) * (double)100);
             }
-            assertLess(deviation, MAX_DEVIATION_PERCENT);
+            assertTrue(format("Deviated from equally balanced by %f percent", deviation), deviation < MAX_DEVIATION_PERCENT);
         }
     }
 
     private static void loadQueryCount(final List<TestHost> pHosts, final boolean pBefore) throws Exception {
         for (final TestHost testHost : pHosts) {
-            final Mongo mongoHost = new MongoClient(new MongoClientURI("mongodb://"+testHost.hostnameAndPort+"/?connectTimeoutMS=30000;socketTimeoutMS=30000;maxpoolsize=5;autoconnectretry=true"));
+            final Mongo mongoHost = new MongoClient(new MongoClientURI("mongodb://"+testHost.hostnameAndPort
+                                                                       + "/?connectTimeoutMS=30000;socketTimeoutMS=30000;maxpoolsize=5;"
+                                                                       + "autoconnectretry=true"));
+            mongoHost.setReadPreference(ReadPreference.nearest());
             try {
                 final CommandResult serverStatusResult
                 = mongoHost.getDB("com_mongodb_unittest_SecondaryReadTest").command(new BasicDBObject("serverStatus", 1));
@@ -264,7 +255,9 @@ public class SecondaryReadTest extends TestCase {
                 if (pBefore) testHost.queriesBefore = opcounters.getLong("query");
                 else testHost.queriesAfter = opcounters.getLong("query");
 
-            } finally { if (mongoHost != null) mongoHost.close(); }
+            } finally {
+                mongoHost.close();
+            }
         }
     }
 

@@ -1,15 +1,19 @@
-/**
- * Copyright (c) 2008 - 2011 10gen, Inc. <http://10gen.com>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
- * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 package com.mongodb;
 
 import org.bson.BSONObject;
@@ -17,7 +21,9 @@ import org.bson.BasicBSONEncoder;
 import org.bson.io.OutputBuffer;
 import org.bson.types.ObjectId;
 
-import static org.bson.BSON.*;
+import static org.bson.BSON.EOO;
+import static org.bson.BSON.OBJECT;
+import static org.bson.BSON.REF;
 
 
 public class DefaultDBEncoder extends BasicBSONEncoder implements DBEncoder {
@@ -42,22 +48,21 @@ public class DefaultDBEncoder extends BasicBSONEncoder implements DBEncoder {
 
     }
 
-    @SuppressWarnings("deprecation")
     protected boolean putSpecial( String name , Object val ){
-        if ( val instanceof DBPointer ){
-            DBPointer r = (DBPointer)val;
-            putDBPointer( name , r._ns , (ObjectId)r._id );
+        if (val instanceof DBRefBase) {
+            putDBRef(name, (DBRefBase) val);
             return true;
+        } else {
+            return false;
         }
-
-        if ( val instanceof DBRefBase ){
-            putDBRef( name, (DBRefBase)val );
-            return true;
-        }
-
-        return false;
     }
 
+    /**
+     * @deprecated Please see {@link DBPointer}.
+     *             You can override {@link #putDBRef(String, DBRefBase)} if you need
+     *             a specific behaviour while decoding database references.
+     */
+    @Deprecated
     protected void putDBPointer( String name , String ns , ObjectId oid ){
         _put( REF , name );
 

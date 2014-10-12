@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2008 - 2012 10gen, Inc. <http://10gen.com>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,25 +12,25 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.mongodb;
 
 import org.bson.types.ObjectId;
-import org.testng.Assert;
-import org.testng.annotations.BeforeTest;
-import org.testng.annotations.Test;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.UnknownHostException;
 
+import static org.junit.Assert.fail;
+
 public class OutMessageTest {
 
     Mongo m;
 
-    @BeforeTest
+    @Before
     public void setup() throws UnknownHostException {
         m = new MongoClient();
     }
@@ -48,35 +48,35 @@ public class OutMessageTest {
 
         try {
             om.doneWithMessage();
-            Assert.fail();
+            fail();
         } catch (IllegalStateException e) {
             // expected
         }
 
         try {
             om.prepare();
-            Assert.fail();
+            fail();
         } catch (IllegalStateException e) {
             // expected
         }
 
         try {
             om.putObject(new BasicDBObject("_id", new ObjectId()));
-            Assert.fail();
+            fail();
         } catch (IllegalStateException e) {
             // expected
         }
 
         try {
             om.pipe(new ByteArrayOutputStream(100));
-            Assert.fail();
+            fail();
         } catch (IllegalStateException e) {
             // expected
         }
 
         try {
             om.size();
-            Assert.fail();
+            fail();
         } catch (IllegalStateException e) {
             // expected
         }

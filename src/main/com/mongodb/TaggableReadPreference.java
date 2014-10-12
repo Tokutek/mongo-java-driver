@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.mongodb;
 
 import java.util.ArrayList;
@@ -73,16 +89,36 @@ public abstract class TaggableReadPreference extends ReadPreference {
         return result;
     }
 
+    @Override
+    List<ServerDescription> choose(final ClusterDescription clusterDescription) {
+        if (_tags.isEmpty()) {
+            return getServers(clusterDescription);
+        }
+        for (DBObject curTagSet : _tags) {
+            Tags tags = getTagsFromDBObject(curTagSet);
+            List<ServerDescription> taggedServers = getServersForTags(clusterDescription, tags);
+            if (!taggedServers.isEmpty()) {
+                return taggedServers;
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    abstract List<ServerDescription> getServers(final ClusterDescription clusterDescription);
+
+    abstract List<ServerDescription> getServersForTags(final ClusterDescription clusterDescription, final Tags tags);
+
     String printTags() {
         return (_tags.isEmpty() ? "" :  " : " + new BasicDBObject("tags", _tags));
     }
 
-    private static List<ReplicaSetStatus.Tag> getTagListFromDBObject(final DBObject curTagSet) {
-        List<ReplicaSetStatus.Tag> tagList = new ArrayList<ReplicaSetStatus.Tag>();
+    // TODO
+    private static Tags getTagsFromDBObject(final DBObject curTagSet) {
+        Tags tags = new Tags();
         for (String key : curTagSet.keySet()) {
-            tagList.add(new ReplicaSetStatus.Tag(key, curTagSet.get(key).toString()));
+            tags.append(key, curTagSet.get(key).toString());
         }
-        return tagList;
+        return tags;
     }
 
     final List<DBObject> _tags;
@@ -106,21 +142,14 @@ public abstract class TaggableReadPreference extends ReadPreference {
         }
 
         @Override
-        ReplicaSetStatus.ReplicaSetNode getNode(ReplicaSetStatus.ReplicaSet set) {
-
-            if (_tags.isEmpty())
-                return set.getASecondary();
-
-            for (DBObject curTagSet : _tags) {
-                List<ReplicaSetStatus.Tag> tagList = getTagListFromDBObject(curTagSet);
-                ReplicaSetStatus.ReplicaSetNode node = set.getASecondary(tagList);
-                if (node != null) {
-                    return node;
-                }
-            }
-            return null;
+        List<ServerDescription> getServers(final ClusterDescription clusterDescription) {
+            return clusterDescription.getSecondaries();
         }
 
+        @Override
+        List<ServerDescription> getServersForTags(final ClusterDescription clusterDescription, final Tags tags) {
+            return clusterDescription.getSecondaries(tags);
+        }
     }
 
     /**
@@ -142,9 +171,9 @@ public abstract class TaggableReadPreference extends ReadPreference {
         }
 
         @Override
-        ReplicaSetStatus.ReplicaSetNode getNode(ReplicaSetStatus.ReplicaSet set) {
-            ReplicaSetStatus.ReplicaSetNode node = super.getNode(set);
-            return (node != null) ? node : set.getMaster();
+        List<ServerDescription> choose(final ClusterDescription clusterDescription) {
+            final List<ServerDescription> servers = super.choose(clusterDescription);
+            return (!servers.isEmpty()) ? servers : clusterDescription.getPrimaries();
         }
     }
 
@@ -167,21 +196,14 @@ public abstract class TaggableReadPreference extends ReadPreference {
             return "nearest";
         }
 
+        @Override
+        List<ServerDescription> getServers(final ClusterDescription clusterDescription) {
+            return clusterDescription.getAnyPrimaryOrSecondary();
+        }
 
         @Override
-        ReplicaSetStatus.ReplicaSetNode getNode(ReplicaSetStatus.ReplicaSet set) {
-
-            if (_tags.isEmpty())
-                return set.getAMember();
-
-            for (DBObject curTagSet : _tags) {
-                List<ReplicaSetStatus.Tag> tagList = getTagListFromDBObject(curTagSet);
-                ReplicaSetStatus.ReplicaSetNode node = set.getAMember(tagList);
-                if (node != null) {
-                    return node;
-                }
-            }
-            return null;
+        List<ServerDescription> getServersForTags(final ClusterDescription clusterDescription, final Tags tags) {
+            return clusterDescription.getAnyPrimaryOrSecondary(tags);
         }
     }
 
@@ -203,13 +225,9 @@ public abstract class TaggableReadPreference extends ReadPreference {
         }
 
         @Override
-        ReplicaSetStatus.ReplicaSetNode getNode(ReplicaSetStatus.ReplicaSet set) {
-            ReplicaSetStatus.ReplicaSetNode node = set.getMaster();
-            return (node != null) ? node : super.getNode(set);
+        List<ServerDescription> choose(final ClusterDescription clusterDescription) {
+            final List<ServerDescription> servers = clusterDescription.getPrimaries();
+            return (!servers.isEmpty()) ? servers : super.choose(clusterDescription);
         }
     }
-
-
-
-
 }

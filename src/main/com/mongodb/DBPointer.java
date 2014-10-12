@@ -1,32 +1,32 @@
-// DBPointer.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// DBPointer.java
 
 package com.mongodb;
 
 import org.bson.types.ObjectId;
 
 /**
- * @deprecated
+ * @deprecated BSON type DBPointer(0x0c) is deprecated. Please use a {@link com.mongodb.DBRef} instead.
  */
 @Deprecated
 public class DBPointer extends DBRefBase {
     
-    static final boolean D = Boolean.getBoolean( "DEBUG.DBPOINTER" );
+    private static final long serialVersionUID = -1977838613745447826L;
 
     /**
      *  CTOR used for testing BSON encoding.  Otherwise
@@ -41,7 +41,7 @@ public class DBPointer extends DBRefBase {
     }
 
     DBPointer( DBObject parent , String fieldName , DB db , String ns , ObjectId id ){
-        super(db, ns, (Object)id);
+        super(db, ns, id);
     
         _parent = parent;
         _fieldName = fieldName;

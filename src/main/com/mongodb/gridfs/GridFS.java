@@ -1,22 +1,31 @@
-// GridFS.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+// GridFS.java
+
 package com.mongodb.gridfs;
+
+import com.mongodb.BasicDBObject;
+import com.mongodb.BasicDBObjectBuilder;
+import com.mongodb.DB;
+import com.mongodb.DBCollection;
+import com.mongodb.DBCursor;
+import com.mongodb.DBObject;
+import com.mongodb.MongoException;
+import org.bson.types.ObjectId;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -26,16 +35,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
-
-import com.mongodb.MongoException;
-import org.bson.types.ObjectId;
-
-import com.mongodb.BasicDBObject;
-import com.mongodb.BasicDBObjectBuilder;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
 
 /**
  *  Implementation of GridFS v1.0
@@ -50,7 +49,7 @@ public class GridFS {
     /**
      * file's chunk size
      */
-    public static final int DEFAULT_CHUNKSIZE = 256 * 1024;
+    public static final int DEFAULT_CHUNKSIZE = 255 * 1024;
 
     /**
      * file's max chunk size
@@ -255,6 +254,10 @@ public class GridFS {
         return files;
     }
 
+    /**
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     protected GridFSDBFile _fix( Object o ){
         if ( o == null )
             return null;
@@ -278,6 +281,9 @@ public class GridFS {
      * @throws MongoException 
      */
     public void remove( ObjectId id ){
+    	 if(id == null) {
+             throw new IllegalArgumentException("file id can not be null");
+         }
         _filesCollection.remove( new BasicDBObject( "_id" , id ) );
         _chunkCollection.remove( new BasicDBObject( "files_id" , id ) );
     }
@@ -288,6 +294,9 @@ public class GridFS {
      * @throws MongoException 
      */
     public void remove( String filename ){
+        if(filename == null) {
+            throw new IllegalArgumentException("filename can not be null");
+        }
         remove( new BasicDBObject( "filename" , filename ) );
     }
 
@@ -297,6 +306,9 @@ public class GridFS {
      * @throws MongoException 
      */
     public void remove( DBObject query ){
+    	if(query == null) {
+              throw new IllegalArgumentException("query can not be null");
+          }
         for ( GridFSDBFile f : find( query ) ){
             f.remove();
         }
@@ -422,9 +434,47 @@ public class GridFS {
         return _db;
     }
 
+    /**
+     * Gets the {@link DBCollection} in which the file’s metadata is stored.
+     *
+     * @return the collection
+     */
+    protected DBCollection getFilesCollection() {
+        return _filesCollection;
+    }
+
+    /**
+     * Gets the {@link DBCollection} in which the binary chunks are stored.
+     *
+     * @return the collection
+     */
+    protected DBCollection getChunksCollection() {
+        return _chunkCollection;
+    }
+
+
+    /**
+     * @deprecated Please use {@link #getDB()} for access.
+     */
+    @Deprecated
     protected final DB _db;
+
+    /**
+     * @deprecated Please use {@link #getBucketName()} for access.
+     */
+    @Deprecated
     protected final String _bucketName;
+
+    /**
+     * @deprecated Please use {@link #getFilesCollection()} for access.
+     */
+    @Deprecated
     protected final DBCollection _filesCollection;
+
+    /**
+     * @deprecated Please use {@link #getChunksCollection()} for access.
+     */
+    @Deprecated
     protected final DBCollection _chunkCollection;
 
 }

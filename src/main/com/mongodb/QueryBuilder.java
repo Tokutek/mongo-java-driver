@@ -1,28 +1,29 @@
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 /* QueryBuilder.java
  *
  * modified April 11, 2012 by Bryan Reinero
  *  added $nearSphere, $centerSphere and $within $polygon query support
  */
 
-/**
- *      Copyright (C) 2010 10gen Inc.
- *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
- */
-
 package com.mongodb;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -244,8 +245,8 @@ public class QueryBuilder {
      * @return
      */
     public QueryBuilder near( double x , double y  ){
-        addOperand(QueryOperators.NEAR,
-                    new Double[]{ x , y } );
+        addOperand( QueryOperators.NEAR,
+                    Arrays.asList(x, y));
         return this;
     }
 
@@ -258,7 +259,10 @@ public class QueryBuilder {
      */
     public QueryBuilder near( double x , double y , double maxDistance ){
         addOperand( QueryOperators.NEAR ,
-                    new Double[]{ x , y , maxDistance } );
+                    Arrays.asList(x, y));
+        addOperand( QueryOperators.MAX_DISTANCE ,
+                    maxDistance );
+
         return this;
     }
     
@@ -269,8 +273,8 @@ public class QueryBuilder {
      * @return
      */
     public QueryBuilder nearSphere( double longitude , double latitude ){
-        addOperand(QueryOperators.NEAR_SPHERE,
-                    new Double[]{ longitude , latitude } );
+        addOperand( QueryOperators.NEAR_SPHERE,
+                    Arrays.asList(longitude, latitude));
         return this;
     }
     
@@ -283,10 +287,12 @@ public class QueryBuilder {
      */
     public QueryBuilder nearSphere( double longitude , double latitude , double maxDistance ){
         addOperand( QueryOperators.NEAR_SPHERE ,
-                    new Double[]{ longitude , latitude , maxDistance } );
+                    Arrays.asList(longitude, latitude));
+        addOperand( QueryOperators.MAX_DISTANCE ,
+                    maxDistance );
         return this;
     }
-    
+
     /**
      * Equivalent of the $centerSphere operand
      * mostly intended for queries up to a few hundred miles or km.
@@ -300,7 +306,7 @@ public class QueryBuilder {
                 new BasicDBObject(QueryOperators.CENTER_SPHERE, new Object[]{ new Double[]{longitude , latitude} , maxDistance } ) );
         return this;
     }
-    
+
     /**
      * Equivalent to a $within operand, based on a bounding box using represented by two corners
      * 
@@ -327,6 +333,40 @@ public class QueryBuilder {
             throw new IllegalArgumentException("Polygon insufficient number of vertices defined");
         addOperand( QueryOperators.WITHIN ,
                     new BasicDBObject(QueryOperators.POLYGON, points ) );
+        return this;
+    }
+
+    /**
+     * Equivalent to a $text operand.
+     * @param search the search terms to apply to the text index.
+     * @return this
+     *
+     * @mongodb.server.release 2.6
+     */
+    public QueryBuilder text(String search) {
+        return text(search, null);
+    }
+
+    /**
+     * Equivalent to a $text operand.
+     * @param search the search terms to apply to the text index.
+     * @param language the language to use.
+     * @return this
+     *
+     * @mongodb.server.release 2.6
+     */
+    public QueryBuilder text(String search, String language) {
+        if(_currentKey != null) {
+            throw new QueryBuilderException("The text operand may only occur at the top-level of a query. It does" +
+                    " not apply to a specific element, but rather to a document as a whole.");
+        }
+
+        put(QueryOperators.TEXT);
+        addOperand(QueryOperators.SEARCH, search);
+        if(language != null) {
+            addOperand(QueryOperators.LANGUAGE, language);
+        }
+
         return this;
     }
 

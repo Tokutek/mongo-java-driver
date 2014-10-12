@@ -1,36 +1,42 @@
-// MongoTest.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// MongoTest.java
 
 package com.mongodb;
 
 import com.mongodb.util.TestCase;
-import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeTest;
-import org.testng.annotations.Test;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 @SuppressWarnings("deprecation")
 public class MongoTest extends TestCase {
     
     public MongoTest()
-        throws IOException , MongoException {
+        throws IOException, MongoException {
         _db = new MongoClient().getDB( "mongotest" );
     }
     
@@ -38,7 +44,7 @@ public class MongoTest extends TestCase {
 
     int _originalCleanerIntervalMs;
 
-    @BeforeTest
+    @Before
     public void setUp() {
         _originalCleanerIntervalMs = Mongo.cleanerIntervalMS;
     }
@@ -87,14 +93,8 @@ public class MongoTest extends TestCase {
         assertNull(mongo.getDB("test").getAuthenticationCredentials());
     }
 
-    @AfterTest
+    @After
     public void tearDown() {
         Mongo.cleanerIntervalMS = _originalCleanerIntervalMs;
     }
-
-    public static void main( String args[] )
-        throws Exception {
-        (new MongoTest()).runConsole();
-    }
-    
 }

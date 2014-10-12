@@ -1,39 +1,38 @@
-// QueryBuilderTest.java
-
-/**
- *      Copyright (C) 2010 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// QueryBuilderTest.java
 package com.mongodb;
 
-
-/*
- * modified April 11, 2012 by Bryan Reinero
- *  added $near, $nearSphere, $centerSphere and $within $polygon tests
- */
 import com.mongodb.QueryBuilder.QueryBuilderException;
 import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
-import org.testng.SkipException;
+import static org.junit.Assume.*;
+import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 /**
  * Test for various methods of <code/>QueryBuilder</code>
- * @author Julson Lim
  */
 public class QueryBuilderTest extends TestCase {
     private DB _testDB;
@@ -293,30 +292,37 @@ public class QueryBuilderTest extends TestCase {
     
     @Test
     public void nearTest() {
-        if (serverIsAtLeastTokumxVersion(2.1) ||
-            !serverIsAtLeastTokumxVersion(2.0)) {
-            throw new SkipException("geo tests disabled on TokuMX");
-        }
+        assumeThat(serverIsAtLeastTokumxVersion(2.0) && !serverIsAtLeastTokumxVersion(2.1));
 
         String key = "loc";
         DBCollection collection = _testDB.getCollection("geoSpatial-test");
         BasicDBObject geoSpatialIndex = new BasicDBObject();
         geoSpatialIndex.put(key, "2d");
         collection.ensureIndex(geoSpatialIndex);
+
+        DBObject expected = null;
         
         Double[] coordinates = {(double) 50, (double) 30};
         saveTestDocument(collection, key, coordinates);
         
         DBObject queryTrue = QueryBuilder.start(key).near(45, 45).get();
+        expected = new BasicDBObject(key, new BasicDBObject("$near", Arrays.asList(45.0, 45.0)));
+        assertEquals(expected, queryTrue);
         assertTrue(testQuery(collection, queryTrue));
         
         queryTrue = QueryBuilder.start(key).near(45, 45, 16).get();
+        expected = new BasicDBObject(key, new BasicDBObject("$near", Arrays.asList(45.0, 45.0)).append("$maxDistance", 16.0));
+        assertEquals(expected, queryTrue);
         assertTrue(testQuery(collection, queryTrue));
         
         queryTrue = QueryBuilder.start(key).nearSphere(45, 45).get();
+        expected = new BasicDBObject(key, new BasicDBObject("$nearSphere", Arrays.asList(45.0, 45.0)));
+        assertEquals(expected, queryTrue);
         assertTrue(testQuery(collection, queryTrue));
         
         queryTrue = QueryBuilder.start(key).nearSphere(45, 45, 0.5).get();
+        expected = new BasicDBObject(key, new BasicDBObject("$nearSphere", Arrays.asList(45.0, 45.0)).append("$maxDistance", 0.5));
+        assertEquals(expected, queryTrue);
         assertTrue(testQuery(collection, queryTrue));
         
         queryTrue = QueryBuilder.start(key).withinCenterSphere(50, 30, 0.5).get();
@@ -348,7 +354,49 @@ public class QueryBuilderTest extends TestCase {
             fail("IllegalArgumentException should have been thrown");
         }catch(IllegalArgumentException e) {}
     }
-	
+
+    @Test
+    public void textTest() {
+        if (!serverIsAtLeastVersion(2.5)) {
+             return;
+        }
+
+        BasicDBObject enableTextCommand = new BasicDBObject("setParameter", 1).append("textSearchEnabled", true);
+        BasicDBObject result = _testDB.getSisterDB("admin").command(enableTextCommand);
+        DBCollection collection = _testDB.getCollection("text-test");
+        BasicDBObject textIndex = new BasicDBObject("comments", "text");
+        collection.ensureIndex(textIndex);
+
+        BasicDBObject doc = new BasicDBObject("comments", "Lorem ipsum dolor sit amet, consectetur adipiscing elit.")
+                .append("meaning", 42);
+        collection.save(doc);
+
+        try {
+            QueryBuilder.start("x").text("funny");
+            fail("QueryBuilderException should have been thrown.");
+        } catch(QueryBuilderException e) { }
+
+        DBObject queryTrue = QueryBuilder.start().text("dolor").get();
+        DBObject expected = new BasicDBObject("$text", new BasicDBObject("$search", "dolor"));
+        assertEquals(expected, queryTrue);
+        assertTrue(testQuery(collection, queryTrue));
+
+        queryTrue = QueryBuilder.start().text("dolor", "english").get();
+        expected = new BasicDBObject("$text", new BasicDBObject("$search", "dolor").append("$language", "english"));
+        assertEquals(expected, queryTrue);
+        assertTrue(testQuery(collection, queryTrue));
+
+        queryTrue = QueryBuilder.start().and(
+                QueryBuilder.start().text("dolor").get(),
+                QueryBuilder.start("meaning").greaterThan(21).get()).get();
+        expected = new BasicDBObject("$and",
+            Arrays.asList(
+                new BasicDBObject("$text", new BasicDBObject("$search", "dolor")),
+                new BasicDBObject("meaning", new BasicDBObject("$gt", 21))));
+        assertEquals(expected, queryTrue);
+        assertTrue(testQuery(collection, queryTrue));
+    }
+
     @Test
     public void failureTest() {
         boolean thrown = false;

@@ -1,26 +1,41 @@
-/**
- *      Copyright (C) 2008-2011 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 package org.bson;
 
 import org.bson.io.BSONByteBuffer;
-import org.bson.types.*;
+import org.bson.types.BSONTimestamp;
+import org.bson.types.Code;
+import org.bson.types.CodeWScope;
+import org.bson.types.MaxKey;
+import org.bson.types.MinKey;
+import org.bson.types.ObjectId;
+import org.bson.types.Symbol;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
@@ -91,6 +106,10 @@ public class LazyBSONObject implements BSONObject {
         int offset = _doc_start_offset + FIRST_ELMT_OFFSET;
     }
 
+    /**
+     * @deprecated This class is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     public class LazyBSONKeySet extends ReadOnlySet<String> {
 
         /**
@@ -431,6 +450,10 @@ public class LazyBSONObject implements BSONObject {
         return new LazyBSONEntrySet();
     }
 
+    /**
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     protected boolean isElementEmpty( int offset ){
         return getElementType( offset ) == BSON.EOO;
     }
@@ -456,10 +479,18 @@ public class LazyBSONObject implements BSONObject {
         return _input.getCString( offset );
     }
 
+    /**
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     protected byte getElementType( final int offset ){
         return _input.get( offset );
     }
 
+    /**
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     protected int getElementBSONSize( int offset ){
         int x = 0;
         byte type = getElementType( offset++ );
@@ -522,7 +553,10 @@ public class LazyBSONObject implements BSONObject {
      * Returns the size of the BSON cstring at the given offset in the buffer
      * @param offset the offset into the buffer
      * @return the size of the BSON cstring, including the null terminator
+     *
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
      */
+    @Deprecated
     protected int sizeCString( int offset ){
         int end = offset;
         while ( true ){
@@ -535,6 +569,10 @@ public class LazyBSONObject implements BSONObject {
         return end - offset + 1;
     }
 
+    /**
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     protected Object getElementValue( ElementRecord record ){
         switch ( record.type ){
             case BSON.EOO:
@@ -592,7 +630,7 @@ public class LazyBSONObject implements BSONObject {
             case BSON.REGEX:
                 int patternCStringSize = sizeCString( record.valueOffset );
                 String pattern = _input.getCString( record.valueOffset );
-                String flags = _input.getCString( record.valueOffset + patternCStringSize + 1 );
+                String flags = _input.getCString( record.valueOffset + patternCStringSize );
                 return Pattern.compile( pattern, BSON.regexFlags( flags ) );
             default:
                 throw new BSONException(
@@ -645,6 +683,14 @@ public class LazyBSONObject implements BSONObject {
         return bin;
     }
 
+    protected int getOffset(){
+        return _doc_start_offset;
+    }
+
+    protected byte[] getBytes() {
+        return _input.array();
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -677,10 +723,23 @@ public class LazyBSONObject implements BSONObject {
      */
     final static int FIRST_ELMT_OFFSET = 4;
 
+    /**
+     * @deprecated Please use {@link #getOffset()} instead.
+     */
+    @Deprecated
     protected final int _doc_start_offset;
 
+    /**
+     *  @deprecated Please use {@link #getBytes()} to access underlying bytes.
+     */
+    @Deprecated
     protected final BSONByteBuffer _input; // TODO - Guard this with synchronicity?
     // callback is kept to create sub-objects on the fly
+
+    /**
+     * @deprecated This field is NOT a part of public API and will be dropped in 3.x versions.
+     */
+    @Deprecated
     protected final LazyBSONCallback _callback;
     private static final Logger log = Logger.getLogger( "org.bson.LazyBSONObject" );
 }

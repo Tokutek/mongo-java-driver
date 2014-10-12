@@ -1,34 +1,57 @@
-// DBTCPConnector.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.mongodb;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.mongodb.ClusterConnectionMode.Multiple;
+import static com.mongodb.ClusterConnectionMode.Single;
+import static com.mongodb.ClusterType.ReplicaSet;
+import static com.mongodb.ClusterType.Sharded;
+import static com.mongodb.ClusterType.Unknown;
+import static com.mongodb.MongoAuthority.Type.Set;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.bson.util.Assertions.isTrue;
+
+/**
+ * @deprecated This class is NOT part of the public API. It will be dropped in 3.x releases.
+ */
+@Deprecated
 public class DBTCPConnector implements DBConnector {
 
-    static Logger _logger = Logger.getLogger( Bytes.LOGGER.getName() + ".tcp" );
+    private static final AtomicInteger NEXT_CLUSTER_ID = new AtomicInteger(1);
+
+    private volatile boolean _closed;
+
+    private final Mongo _mongo;
+
+    private Cluster cluster;
+
+    private final MyPort _myPort = new MyPort();
+
+    private final ClusterConnectionMode connectionMode;
+
+    private ClusterType type = ClusterType.Unknown;
+    private MongosHAServerSelector mongosHAServerSelector;
 
     /**
      * @param mongo the Mongo instance
@@ -36,21 +59,34 @@ public class DBTCPConnector implements DBConnector {
      */
     public DBTCPConnector( Mongo mongo  ) {
         _mongo = mongo;
-        _portHolder = new DBPortPool.Holder( mongo._options );
-        MongoAuthority.Type type = mongo.getAuthority().getType();
-        if (type == MongoAuthority.Type.Direct) {
-            setMasterAddress(mongo.getAuthority().getServerAddresses().get(0));
-        } else if (type == MongoAuthority.Type.Set) {
-            _connectionStatus = new DynamicConnectionStatus(mongo, mongo.getAuthority().getServerAddresses());
-        } else {
-            throw new IllegalArgumentException("Unsupported authority type: " + type);
-        }
+        connectionMode = _mongo.getAuthority().getType() == Set || _mongo.getMongoOptions().getRequiredReplicaSetName() != null ?
+                         Multiple : Single;
     }
 
     public void start() {
-        if (_connectionStatus != null) {
-            _connectionStatus.start();
-        }
+        isTrue("open", !_closed);
+
+        MongoOptions options = _mongo.getMongoOptions();
+
+        String clusterId = Integer.toString(NEXT_CLUSTER_ID.getAndIncrement());
+        cluster =
+        Clusters.create(clusterId,
+                        ClusterSettings.builder()
+                                       .hosts(_mongo.getAuthority().getServerAddresses())
+                                       .mode(connectionMode)
+                                       .requiredReplicaSetName(_mongo.getMongoOptions().getRequiredReplicaSetName())
+                                       .build(),
+                        ServerSettings.builder()
+                                      .heartbeatFrequency(options.heartbeatFrequencyMS, MILLISECONDS)
+                                      .heartbeatConnectRetryFrequency(options.heartbeatConnectRetryFrequencyMS, MILLISECONDS)
+                                      .heartbeatSocketSettings(SocketSettings.builder()
+                                                                             .connectTimeout(options.heartbeatConnectTimeoutMS,
+                                                                                             MILLISECONDS)
+                                                                             .readTimeout(options.heartbeatReadTimeoutMS, MILLISECONDS)
+                                                                             .socketFactory(_mongo.getMongoOptions().getSocketFactory())
+                                                                             .build())
+                                      .build(),
+                        null, _mongo);
     }
 
     /**
@@ -66,6 +102,7 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public void requestStart(){
+        isTrue("open", !_closed);
         _myPort.requestStart();
     }
 
@@ -78,6 +115,7 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public void requestDone(){
+        isTrue("open", !_closed);
         _myPort.requestDone();
     }
 
@@ -86,16 +124,11 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public void requestEnsureConnection(){
-        checkMaster( false , true );
+        isTrue("open", !_closed);
         _myPort.requestEnsureConnection();
     }
 
-    void _checkClosed(){
-        if ( _closed.get() )
-            throw new IllegalStateException( "this Mongo has been closed" );
-    }
-
-    WriteResult _checkWriteError( DB db, DBPort port , WriteConcern concern )
+    private WriteResult _checkWriteError( DB db, DBPort port , WriteConcern concern )
         throws IOException{
         CommandResult e = port.runCommand( db , concern.getCommand() );
 
@@ -112,7 +145,8 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public WriteResult say( DB db , OutMessage m , WriteConcern concern ){
-        return say( db , m , concern , null );
+        isTrue("open", !_closed);
+        return say( db , m , concern , (ServerAddress) null);
     }
 
     /**
@@ -125,48 +159,66 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public WriteResult say( DB db , OutMessage m , WriteConcern concern , ServerAddress hostNeeded ){
+        isTrue("open", !_closed);
+        DBPort port = _myPort.get(true, ReadPreference.primary(), hostNeeded);
+
+        try {
+            return say(db, m, concern, port);
+        }
+        finally {
+            _myPort.done(port);
+        }
+    }
+
+    WriteResult say(final DB db, final OutMessage m, final WriteConcern concern, final DBPort port){
+        isTrue("open", !_closed);
 
         if (concern == null) {
             throw new IllegalArgumentException("Write concern is null");
         }
 
-        _checkClosed();
-        checkMaster( false , true );
-
-        DBPort port = _myPort.get(true, ReadPreference.primary(), hostNeeded);
-
         try {
-            port.checkAuth( db.getMongo() );
-            port.say( m );
-            if ( concern.callGetLastError() ){
-                return _checkWriteError( db , port , concern );
-            }
-            else {
-                return new WriteResult( db , port , concern );
-            }
-        }
-        catch ( IOException ioe ){
-            _myPort.error(port, ioe);
-            _error( ioe, false );
-
+            return doOperation(db, port, new DBPort.Operation<WriteResult>() {
+                @Override
+                public WriteResult execute() throws IOException {
+                    port.say(m);
+                    if (concern.callGetLastError()) {
+                        return _checkWriteError(db, port, concern);
+                    } else {
+                        return new WriteResult(db, port, concern);
+                    }
+                }
+            });
+        } catch (MongoException.Network e) {
             if ( concern.raiseNetworkErrors() )
-                throw new MongoException.Network("Write operation to server " + port.host() + " failed on database " + db , ioe );
+                throw e;
 
             CommandResult res = new CommandResult(port.serverAddress());
             res.put( "ok" , false );
             res.put( "$err" , "NETWORK ERROR" );
             return new WriteResult( res , concern );
+        } finally {
+            m.doneWithMessage();
         }
-        catch ( MongoException me ){
-            throw me;
+    }
+
+    <T> T doOperation(final DB db, final DBPort port, final DBPort.Operation<T> operation){
+        isTrue("open", !_closed);
+
+        try {
+            port.checkAuth( db.getMongo() );
+            return operation.execute();
+        }
+        catch ( MongoException re ){
+            throw re;
+        }
+        catch ( IOException ioe ){
+            _myPort.error(port, ioe);
+            throw new MongoException.Network("Operation on server " + port.getAddress() + " failed" , ioe );
         }
         catch ( RuntimeException re ){
             _myPort.error(port, re);
             throw re;
-        }
-        finally {
-            _myPort.done(port);
-            m.doneWithMessage();
         }
     }
 
@@ -181,6 +233,7 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public Response call( DB db , DBCollection coll , OutMessage m, ServerAddress hostNeeded, DBDecoder decoder ){
+        isTrue("open", !_closed);
         return call( db , coll , m , hostNeeded , 2, null, decoder );
     }
 
@@ -195,7 +248,8 @@ public class DBTCPConnector implements DBConnector {
      */
     @Override
     public Response call( DB db , DBCollection coll , OutMessage m , ServerAddress hostNeeded , int retries ){
-        return call( db, coll, m, hostNeeded, retries, null, null);
+        isTrue("open", !_closed);
+        return call(db, coll, m, hostNeeded, retries, null, null);
     }
 
 
@@ -212,6 +266,7 @@ public class DBTCPConnector implements DBConnector {
     @Override
     public Response call( DB db, DBCollection coll, OutMessage m, ServerAddress hostNeeded, int retries,
                           ReadPreference readPref, DBDecoder decoder ){
+        isTrue("open", !_closed);
         try {
             return innerCall(db, coll, m, hostNeeded, retries, readPref, decoder);
         } finally {
@@ -221,19 +276,12 @@ public class DBTCPConnector implements DBConnector {
 
     // This method is recursive.  It calls itself to implement query retry logic.
     private Response innerCall(final DB db, final DBCollection coll, final OutMessage m, final ServerAddress hostNeeded,
-                               final int retries, ReadPreference readPref, final DBDecoder decoder) {
+                               final int remainingRetries, ReadPreference readPref, final DBDecoder decoder) {
         if (readPref == null)
             readPref = ReadPreference.primary();
 
         if (readPref == ReadPreference.primary() && m.hasOption( Bytes.QUERYOPTION_SLAVEOK ))
            readPref = ReadPreference.secondaryPreferred();
-
-        boolean secondaryOk = !(readPref == ReadPreference.primary());
-
-        _checkClosed();
-        // Don't check master on secondary reads unless connected to a replica set
-        if (!secondaryOk || getReplicaSetStatus() == null)
-            checkMaster( false, !secondaryOk );
 
         final DBPort port = _myPort.get(false, readPref, hostNeeded);
 
@@ -247,8 +295,7 @@ public class DBTCPConnector implements DBConnector {
         }
         catch ( IOException ioe ){
             _myPort.error(port, ioe);
-            retry = retries > 0 && !coll._name.equals( "$cmd" )
-                    && !(ioe instanceof SocketTimeoutException) && _error( ioe, secondaryOk );
+            retry = shouldRetryQuery(readPref, coll, ioe, remainingRetries);
             if ( !retry ){
                 throw  new MongoException.Network("Read operation to server " + port.host() + " failed on database " + db , ioe );
             }
@@ -261,24 +308,30 @@ public class DBTCPConnector implements DBConnector {
         }
 
         if (retry)
-            return innerCall( db , coll , m , hostNeeded , retries - 1 , readPref, decoder );
+            return innerCall( db , coll , m , hostNeeded , remainingRetries - 1 , readPref, decoder );
 
         ServerError err = res.getError();
 
         if ( err != null && err.isNotMasterError() ){
-            checkMaster( true , true );
-            if ( retries <= 0 ){
+            if ( remainingRetries <= 0 ){
                 throw new MongoException( "not talking to master and retries used up" );
             }
-            return innerCall( db , coll , m , hostNeeded , retries -1, readPref, decoder );
+            return innerCall( db , coll , m , hostNeeded , remainingRetries -1, readPref, decoder );
         }
 
         return res;
     }
 
-    public ServerAddress getAddress(){
-        DBPortPool pool = _masterPortPool;
-        return pool != null ? pool.getServerAddress() : null;
+    public ServerAddress getAddress() {
+        isTrue("open", !_closed);
+        ClusterDescription clusterDescription = getClusterDescription();
+        if (connectionMode == Single) {
+            return clusterDescription.getAny().get(0).getAddress();
+        }
+        if (clusterDescription.getPrimaries().isEmpty()) {
+            return null;
+        }
+        return clusterDescription.getPrimaries().get(0).getAddress();
     }
 
     /**
@@ -286,6 +339,7 @@ public class DBTCPConnector implements DBConnector {
      * @return
      */
     public List<ServerAddress> getAllAddress() {
+        isTrue("open", !_closed);
         return _mongo._authority.getServerAddresses();
     }
 
@@ -296,73 +350,73 @@ public class DBTCPConnector implements DBConnector {
      * @throws MongoException
      */
     public List<ServerAddress> getServerAddressList() {
-        if (_connectionStatus != null) {
-            return _connectionStatus.getServerAddressList();
+        isTrue("open", !_closed);
+        List<ServerAddress> serverAddressList = new ArrayList<ServerAddress>();
+        ClusterDescription clusterDescription = getClusterDescription();
+        for (ServerDescription serverDescription : clusterDescription.getAll()) {
+            serverAddressList.add(serverDescription.getAddress());
         }
-
-        ServerAddress master = getAddress();
-        if (master != null) {
-            // single server
-            List<ServerAddress> list = new ArrayList<ServerAddress>();
-            list.add(master);
-            return list;
-        }
-        return null;
+        return serverAddressList;
     }
 
     public ReplicaSetStatus getReplicaSetStatus() {
-        if (_connectionStatus instanceof ReplicaSetStatus) {
-            return (ReplicaSetStatus) _connectionStatus;
-        } else if (_connectionStatus instanceof DynamicConnectionStatus) {
-            return ((DynamicConnectionStatus) _connectionStatus).asReplicaSetStatus();
-        } else {
-            return null;
-        }
+        isTrue("open", !_closed);
+        return getType() == ReplicaSet && connectionMode == Multiple ? new ReplicaSetStatus(getClusterDescription()) : null;
     }
 
     // This call can block if it's not yet known.
-    // Be careful when modifying this method, as this method is using the fact that _isMongosDirectConnection
-    // is of type Boolean and is null when uninitialized.
     boolean isMongosConnection() {
-        if (_connectionStatus instanceof MongosStatus) {
-            return true;
-        } else if (_connectionStatus instanceof DynamicConnectionStatus) {
-            return ((DynamicConnectionStatus) _connectionStatus).asMongosStatus() != null;
-        }
-
-        if (_isMongosDirectConnection == null) {
-            initDirectConnection();
-        }
-
-        return _isMongosDirectConnection != null ? _isMongosDirectConnection : false;
+        isTrue("open", !_closed);
+        return getType() == Sharded;
     }
 
     public String getConnectPoint(){
+        isTrue("open", !_closed);
         ServerAddress master = getAddress();
         return master != null ? master.toString() : null;
     }
 
-    /**
-     * This method is called in case of an IOException.
-     * It will potentially trigger a checkMaster() to check the status of all servers.
-     * @param t the exception thrown
-     * @param secondaryOk secondaryOk flag
-     * @return true if the request should be retried, false otherwise
-     * @throws MongoException
-     */
-    boolean _error( Throwable t, boolean secondaryOk ){
-        if (_connectionStatus == null) {
-            // single server, no need to retry
+    private boolean shouldRetryQuery(ReadPreference readPreference, final DBCollection coll, final IOException ioe, final int remainingRetries) {
+        if (remainingRetries == 0) {
             return false;
         }
-
-        // the replset has at least 1 server up, try to see if should switch master
-        // if no server is up, we wont retry until the updater thread finds one
-        // this is to cut down the volume of requests/errors when all servers are down
-        if ( _connectionStatus.hasServerUp() ){
-            checkMaster( true , !secondaryOk );
+        if (coll._name.equals("$cmd")) {
+            return false;
         }
-        return _connectionStatus.hasServerUp();
+        if (ioe instanceof SocketTimeoutException) {
+            return false;
+        }
+        if (readPreference.equals(ReadPreference.primary())) {
+            return false;
+        }
+        return connectionMode == Multiple && getType() == ReplicaSet;
+    }
+
+    private ClusterDescription getClusterDescription() {
+        return cluster.getDescription(getClusterWaitTimeMS(), MILLISECONDS);
+    }
+
+    private int getClusterWaitTimeMS() {
+        return Math.min(_mongo.getMongoOptions().maxWaitTime, _mongo.getMongoOptions().connectTimeout);
+    }
+
+    private int getConnectionWaitTimeMS() {
+        return _mongo.getMongoOptions().maxWaitTime;
+    }
+
+    DBPort getPrimaryPort() {
+        isTrue("open", !_closed);
+        return _myPort.get(true, ReadPreference.primary(), null);
+    }
+
+    void releasePort(final DBPort port) {
+        isTrue("open", !_closed);
+        _myPort.done(port);
+    }
+
+    ServerDescription getServerDescription(final ServerAddress address) {
+        isTrue("open", !_closed);
+        return getClusterDescription().getByServerAddress(address);
     }
 
     class MyPort {
@@ -377,41 +431,24 @@ public class DBTCPConnector implements DBConnector {
                 }
 
                 // asked for a specific host
-                return _portHolder.get( hostNeeded ).get();
+                return getConnection(new ServerAddressSelector(hostNeeded));
             }
 
             if ( pinnedRequestPort != null ){
                 // we are within a request, and have a port, should stick to it
-                if ( pinnedRequestPort.getPool() == _masterPortPool || !keep ) {
-                    // if keep is false, it's a read, so we use port even if master changed
+                if ( portIsAPrimary(pinnedRequestPort) || !keep ) {
+                    // if keep is false, it's a read, so we use port even if primary changed
                     return pinnedRequestPort;
                 }
 
-                // it's write and master has changed
-                // we fall back on new master and try to go on with request
+                // it's write and primary has changed
+                // we fall back on new primary and try to go on with request
                 // this may not be best behavior if spec of request is to stick with same server
-                pinnedRequestPort.getPool().done(pinnedRequestPort);
+                pinnedRequestPort.getProvider().release(pinnedRequestPort);
                 setPinnedRequestPortForThread(null);
             }
 
-            DBPort port;
-            if (getReplicaSetStatus() == null){
-                if (_masterPortPool == null) {
-                    // this should only happen in rare case that no master was ever found
-                    // may get here at startup if it's a read, slaveOk=true, and ALL servers are down
-                    throw new MongoException("Rare case where master=null, probably all servers are down");
-                }
-                port = _masterPortPool.get();
-            }
-            else {
-                ReplicaSetStatus.ReplicaSet replicaSet = getReplicaSetStatus()._replicaSetHolder.get();
-                ConnectionStatus.Node node = readPref.getNode(replicaSet);
-
-                if (node == null)
-                    throw new MongoException("No replica set members available in " +  replicaSet + " for " + readPref.toDBObject().toString());
-
-                port = _portHolder.get(node.getServerAddress()).get();
-            }
+            DBPort port = getConnection(createServerSelector(readPref));
 
             // if within request, remember port to stick to same server
             if (threadHasPinnedRequest()) {
@@ -421,12 +458,21 @@ public class DBTCPConnector implements DBConnector {
             return port;
         }
 
+        private boolean portIsAPrimary(final DBPort pinnedRequestPort) {
+            for (ServerDescription cur : getClusterDescription().getPrimaries()) {
+                if (cur.getAddress().equals(pinnedRequestPort.serverAddress())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         void done( DBPort port ) {
-            DBPort requestPort = getPinnedRequestPortForThread();
+            Connection requestPort = getPinnedRequestPortForThread();
 
             // keep request port
             if (port != requestPort) {
-                port.getPool().done(port);
+                port.getProvider().release(port);
             }
         }
 
@@ -436,17 +482,11 @@ public class DBTCPConnector implements DBConnector {
          * @param e
          */
         void error( DBPort port , Exception e ){
+            if (!(e instanceof InterruptedIOException)) {
+                getServer(new ServerAddressSelector(port.getAddress())).invalidate();
+            }
             port.close();
             pinnedRequestStatusThreadLocal.remove();
-
-            // depending on type of error, may need to close other connections in pool
-            boolean recoverable = port.getPool().gotError(e);
-            if (!recoverable && _connectionStatus != null && _masterPortPool._addr.equals(port.serverAddress())) {
-                ConnectionStatus.Node newMaster = _connectionStatus.ensureMaster();
-                if (newMaster != null) {
-                    setMaster(newMaster);
-                }
-            }
         }
 
         void requestEnsureConnection(){
@@ -456,10 +496,14 @@ public class DBTCPConnector implements DBConnector {
             if ( getPinnedRequestPortForThread() != null )
                 return;
 
-            setPinnedRequestPortForThread(_masterPortPool.get());
+            setPinnedRequestPortForThread(getConnection(createServerSelector(ReadPreference.primary())));
         }
 
-        void requestStart(){
+        private DBPort getConnection(final ServerSelector serverSelector) {
+            return (DBPort) getServer(serverSelector).getConnection(getConnectionWaitTimeMS(), MILLISECONDS);
+        }
+
+        void requestStart() {
             PinnedRequestStatus current = getPinnedRequestStatusForThread();
             if (current == null) {
                 pinnedRequestStatusThreadLocal.set(new PinnedRequestStatus());
@@ -478,7 +522,7 @@ public class DBTCPConnector implements DBConnector {
                 else  {
                     pinnedRequestStatusThreadLocal.remove();
                     if (current.requestPort != null)
-                        current.requestPort.getPool().done(current.requestPort);
+                        current.requestPort.getProvider().release(current.requestPort);
                 }
             }
         }
@@ -502,103 +546,54 @@ public class DBTCPConnector implements DBConnector {
         private final ThreadLocal<PinnedRequestStatus> pinnedRequestStatusThreadLocal = new ThreadLocal<PinnedRequestStatus>();
     }
 
+    private ServerSelector createServerSelector(final ReadPreference readPreference) {
+        if (connectionMode == Multiple) {
+            List<ServerSelector> serverSelectorList = new ArrayList<ServerSelector>();
+            if (getType() == Sharded) {
+                serverSelectorList.add(getMongosHAServerSelector());
+            } else if (getType() == ReplicaSet) {
+                serverSelectorList.add(new ReadPreferenceServerSelector(readPreference));
+            } else {
+                serverSelectorList.add(new AnyServerSelector());
+            }
+            serverSelectorList.add(new LatencyMinimizingServerSelector(_mongo.getMongoOptions().acceptableLatencyDifferenceMS,
+                                                                       MILLISECONDS));
+            return new CompositeServerSelector(serverSelectorList);
+        } else {
+            return new AnyServerSelector();
+        }
+    }
+
+    private synchronized ClusterType getType() {
+        if (type == Unknown) {
+            type = getClusterDescription().getType();
+        }
+        return type;
+    }
+
+    // There needs to be just one instance of this because it's stateful between requests
+    private synchronized MongosHAServerSelector getMongosHAServerSelector() {
+        if (mongosHAServerSelector == null) {
+            mongosHAServerSelector = new MongosHAServerSelector();
+        }
+        return mongosHAServerSelector;
+    }
+
     static class PinnedRequestStatus {
         DBPort requestPort;
         public int nestedBindings;
     }
 
-    void checkMaster( boolean force , boolean failIfNoMaster ){
-
-        if ( _connectionStatus != null ){
-            if ( _masterPortPool == null || force ){
-                ConnectionStatus.Node master = _connectionStatus.ensureMaster();
-                if ( master == null ){
-                    if ( failIfNoMaster )
-                        throw new MongoException( "can't find a master" );
-                }
-                else {
-                    setMaster(master);
-                }
-            }
-        } else {
-            // single server, may have to obtain max bson size
-            if (_maxBsonObjectSize == 0)
-                initDirectConnection();
-        }
-    }
-
-    synchronized void setMaster(ConnectionStatus.Node master) {
-        if (_closed.get()) {
-            return;
-        }
-        setMasterAddress(master.getServerAddress());
-        _maxBsonObjectSize = master.getMaxBsonObjectSize();
-    }
-
-    /**
-     * Fetches the maximum size for a BSON object from the current master server
-     * @return the size, or 0 if it could not be obtained
-     */
-    void initDirectConnection() {
-        if (_masterPortPool == null)
-            return;
-        DBPort port = _masterPortPool.get();
-        try {
-            CommandResult res = port.runCommand(_mongo.getDB("admin"), new BasicDBObject("isMaster", 1));
-            // max size was added in 1.8
-            if (res.containsField("maxBsonObjectSize")) {
-                _maxBsonObjectSize = (Integer) res.get("maxBsonObjectSize");
-            } else {
-                _maxBsonObjectSize = Bytes.MAX_OBJECT_SIZE;
-            }
-
-            String msg = res.getString("msg");
-            _isMongosDirectConnection = msg != null && msg.equals("isdbgrid");
-        } catch (Exception e) {
-            _logger.log(Level.WARNING, "Exception executing isMaster command on " + port.serverAddress(), e);
-        } finally {
-            port.getPool().done(port);
-        }
-    }
-
-
-
-    private synchronized boolean setMasterAddress(ServerAddress addr) {
-        DBPortPool newPool = _portHolder.get( addr );
-        if (newPool == _masterPortPool)
-            return false;
-
-        if (  _masterPortPool != null )
-            _logger.log(Level.WARNING, "Primary switching from " + _masterPortPool.getServerAddress() + " to " + addr);
-        _masterPortPool = newPool;
-        return true;
-    }
 
     public String debugString(){
-        StringBuilder buf = new StringBuilder( "DBTCPConnector: " );
-        if ( _connectionStatus != null ) {
-            buf.append( "set : " ).append( _mongo._authority.getServerAddresses() );
-        } else {
-            ServerAddress master = getAddress();
-            buf.append( master ).append( " " ).append( master != null ? master.getSocketAddress() : null );
-        }
-
-        return buf.toString();
+        return getClusterDescription().getShortDescription();
     }
 
     public void close(){
-        _closed.set( true );
-        if ( _portHolder != null ) {
-            try {
-                _portHolder.close();
-                _portHolder = null;
-            } catch (final Throwable t) { /* nada */ }
-        }
-        if ( _connectionStatus != null ) {
-            try {
-                _connectionStatus.close();
-                _connectionStatus = null;
-            } catch (final Throwable t) { /* nada */ }
+        _closed = true;
+        if (cluster != null) {
+            cluster.close();
+            cluster = null;
         }
     }
 
@@ -609,8 +604,6 @@ public class DBTCPConnector implements DBConnector {
      * @param addr
      */
     public void updatePortPool(ServerAddress addr) {
-        // just remove from map, a new pool will be created lazily
-        _portHolder._pools.remove(addr);
     }
 
     /**
@@ -619,16 +612,15 @@ public class DBTCPConnector implements DBConnector {
      * @return
      */
     public DBPortPool getDBPortPool(ServerAddress addr) {
-        return _portHolder.get(addr);
+        throw new UnsupportedOperationException();
     }
 
     public boolean isOpen(){
-        return ! _closed.get();
+        return !_closed;
     }
 
     @Override
     public CommandResult authenticate(MongoCredential credentials) {
-        checkMaster(false, true);
         final DBPort port = _myPort.get(false, ReadPreference.primaryPreferred(), null);
 
         try {
@@ -646,7 +638,11 @@ public class DBTCPConnector implements DBConnector {
      * @return the maximum size, or 0 if not obtained from servers yet.
      */
     public int getMaxBsonObjectSize() {
-        return _maxBsonObjectSize;
+        ClusterDescription clusterDescription = getClusterDescription();
+        if (clusterDescription.getPrimaries().isEmpty()) {
+            return Bytes.MAX_OBJECT_SIZE;
+        }
+        return clusterDescription.getPrimaries().get(0).getMaxDocumentSize();
     }
 
     // expose for unit testing
@@ -654,15 +650,7 @@ public class DBTCPConnector implements DBConnector {
         return _myPort;
     }
 
-    private volatile DBPortPool _masterPortPool;
-    private final Mongo _mongo;
-    private DBPortPool.Holder _portHolder;
-    private ConnectionStatus _connectionStatus;
-
-    private final AtomicBoolean _closed = new AtomicBoolean(false);
-
-    private volatile int _maxBsonObjectSize;
-    private volatile Boolean _isMongosDirectConnection;
-
-    MyPort _myPort = new MyPort();
+    private Server getServer(final ServerSelector serverSelector) {
+        return cluster.getServer(serverSelector, getClusterWaitTimeMS(), MILLISECONDS);
+    }
 }

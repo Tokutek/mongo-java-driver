@@ -1,12 +1,12 @@
-/**
- * Copyright (c) 2008 - 2012 10gen, Inc. <http://10gen.com>
- * <p/>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p/>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p/>
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,25 +28,32 @@ public abstract class DocTaglet implements Taglet {
 
     public boolean isInlineTag()   { return false; }
 
-    public String toString( Tag[] tags ){
-        if ( tags.length == 0 )
+    public String toString(Tag[] tags) {
+        if (tags.length == 0) {
             return null;
-
-        StringBuilder buf = new StringBuilder( "\n<br><DT><B>MongoDB Doc Links</B><DD>" );
-        buf.append( "<ul>" );
-        for ( Tag t : tags ){
-            buf.append( "<li>" ).append( genLink( t.text() ) ).append( "</li>" );
         }
-        buf.append( "</ul>" );
-        buf.append( "</DD>\n" );
+
+        StringBuilder buf = new StringBuilder("\n");
+        buf.append("<dl><dt><span class=\"strong\">");
+        buf.append(getHeader());
+        buf.append("</span></dt>");
+        buf.append("\n");
+        for (Tag t : tags) {
+            buf.append("   <dd>").append(genLink(t.text())).append("</dd>");
+        }
+        buf.append("\n");
         return buf.toString();
     }
 
-    public String toString( Tag tag ){
+    public String toString(Tag tag) {
         return toString(new Tag[]{tag});
     }
 
-    protected String genLink( String text ){
+    protected String getHeader() {
+        return "MongoDB documentation";
+    }
+
+    protected String genLink(String text) {
         String relativePath = text;
         String display = text;
 
@@ -56,9 +63,7 @@ public abstract class DocTaglet implements Taglet {
             display = text.substring(firstSpace, text.length()).trim();
         }
 
-        return new StringBuilder()
-                .append( "<a href='" ).append(getBaseDocURI()).append(relativePath).append( "'>" ).append(display).append( "</a>" )
-                .toString();
+        return "<a href='" + getBaseDocURI() + relativePath + "'>" + display + "</a>";
     }
 
     protected abstract String getBaseDocURI();

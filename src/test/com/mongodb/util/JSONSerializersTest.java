@@ -1,16 +1,48 @@
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.mongodb.util;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBRefBase;
-import org.bson.types.*;
+import org.bson.types.BSONTimestamp;
+import org.bson.types.BasicBSONList;
+import org.bson.types.Binary;
+import org.bson.types.Code;
+import org.bson.types.CodeWScope;
+import org.bson.types.MaxKey;
+import org.bson.types.MinKey;
+import org.bson.types.ObjectId;
+import org.junit.Test;
 
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.Random;
+import java.util.SimpleTimeZone;
+import java.util.TreeMap;
+import java.util.UUID;
 import java.util.regex.Pattern;
+
+import static org.junit.Assert.assertEquals;
 
 public class JSONSerializersTest extends com.mongodb.util.TestCase {
     
-    @org.testng.annotations.Test(groups = {"basic"})
+    @Test
     public void testBinaryCodecs() {
         
         //Base64 encoding Test
@@ -25,7 +57,7 @@ public class JSONSerializersTest extends com.mongodb.util.TestCase {
         assertEquals(buf.toString(), "<Binary Data>");
     }
     
-    @org.testng.annotations.Test(groups = {"basic"})
+    @Test
     public void testLegacySerialization() {
         ObjectSerializer serializer = JSONSerializers.getLegacy();
         
@@ -129,7 +161,7 @@ public class JSONSerializersTest extends com.mongodb.util.TestCase {
         Long longVal = new Long(val);
         buf = new StringBuilder();
         serializer.serialize(longVal, buf);
-        assertEquals(buf.toString(), val);
+        assertEquals(buf.toString(), longVal.toString());
         
         // test  OBJECT_ID
         buf = new StringBuilder();
@@ -153,7 +185,7 @@ public class JSONSerializersTest extends com.mongodb.util.TestCase {
         assertEquals( buf.toString(), "{ \"$uuid\" : \""+uuid.toString()+"\"}");
     }
     
-    @org.testng.annotations.Test(groups = {"basic"})
+    @Test
     public void testStrictSerialization() {
         ObjectSerializer serializer = JSONSerializers.getStrict();
         
@@ -182,7 +214,7 @@ public class JSONSerializersTest extends com.mongodb.util.TestCase {
         assertEquals(buf.toString(), "{ \"$date\" : "+(d.getTime())+"}");
     }
     
-    @org.testng.annotations.Test(groups = {"basic"})
+    @Test
     public void testSerializationByAncestry() {
         ClassMapBasedObjectSerializer serializer = new ClassMapBasedObjectSerializer();
 

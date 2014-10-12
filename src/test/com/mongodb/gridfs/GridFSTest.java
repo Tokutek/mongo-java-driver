@@ -1,27 +1,29 @@
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.mongodb.gridfs;
 
 import com.mongodb.BasicDBObject;
-import com.mongodb.DB;
 import com.mongodb.DBCursor;
+import com.mongodb.DBObject;
 import com.mongodb.MongoException;
 import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
+import org.bson.types.ObjectId;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -30,12 +32,21 @@ import java.io.OutputStream;
 import java.util.List;
 import java.util.Random;
 
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 public class GridFSTest extends TestCase {
     
     public GridFSTest() {
-        cleanupDB = "com_mongodb_unittest_GridFSTest";
-        _db = cleanupMongo.getDB(cleanupDB);
-        _fs = new GridFS(_db);
+        _fs = new GridFS(getDatabase());
+    }
+
+    @Before
+    public void beforeMethod() {
+        getDatabase().getCollection("fs.files").drop();
+        getDatabase().getCollection("fs.chunks").drop();
     }
 
     int[] _get(){
@@ -67,13 +78,13 @@ public class GridFSTest extends TestCase {
         assertEquals( start[1] , end[1] );
     }
     
-    @Test(groups = {"basic"})
+    @Test
     public void testSmall()
         throws Exception {
         testInOut( "this is a simple test" );
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testBig()
         throws Exception {
         int target = GridFS.DEFAULT_CHUNKSIZE * 3;
@@ -107,12 +118,12 @@ public class GridFSTest extends TestCase {
         assertEquals( start[1], end[1] );
     }
     
-    @Test(groups = { "basic" })
+    @Test
     public void testOutStreamSmall() throws Exception {
         testOutStream( "this is a simple test" );
     }
     
-    @Test(groups = { "basic" })
+    @Test
     public void testOutStreamBig() throws Exception {
         int target = (int) (GridFS.DEFAULT_CHUNKSIZE * 3.5);
         StringBuilder buf = new StringBuilder( target );
@@ -123,7 +134,7 @@ public class GridFSTest extends TestCase {
         testOutStream( s );
     }
 
-    @Test(groups = { "basic" })
+    @Test
     public void testOutStreamBigAligned() throws Exception {
         int target = (GridFS.DEFAULT_CHUNKSIZE * 4);
         StringBuilder buf = new StringBuilder( target );
@@ -134,7 +145,7 @@ public class GridFSTest extends TestCase {
         testOutStream( s );
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testMetadata()
         throws Exception {
 
@@ -145,38 +156,21 @@ public class GridFSTest extends TestCase {
         assert( out.get("meta").equals( 5 ) );
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testBadChunkSize() throws Exception {
-        int fileSize = 2 * _db.getMongo().getMaxBsonObjectSize();
-        if (fileSize > 1024 * 1024 * 1024)
-            //If this is the case, GridFS is probably obsolete...
-            fileSize = 10 * 1024 * 1024;
-
-        byte[] randomBytes = new byte[fileSize];
-        for (int idx = 0; idx < fileSize; ++idx)
-            randomBytes[idx] = (byte)(256 * Math.random());
-
+        byte[] randomBytes = new byte[256];
         GridFSInputFile inputFile = _fs.createFile(randomBytes);
         inputFile.setFilename("bad_chunk_size.bin");
-        try{
+        try {
             inputFile.save(0);
             fail("should have received an exception about a chunk size being zero");
-        }catch(MongoException mongoExc) {
+        } catch (MongoException e) {
             //We expect this exception to complain about the chunksize
-            assertTrue(mongoExc.toString().contains("chunkSize must be greater than zero"));
+            assertTrue(e.toString().contains("chunkSize must be greater than zero"));
         }
-
-        //For good measure let's save and restore the bytes
-        inputFile.save(_db.getMongo().getMaxBsonObjectSize() - 500 * 1000);
-        GridFSDBFile savedFile = _fs.findOne(new BasicDBObject("_id", inputFile.getId()));
-        ByteArrayOutputStream savedFileByteStream = new ByteArrayOutputStream();
-        savedFile.writeTo(savedFileByteStream);
-        byte[] savedFileBytes = savedFileByteStream.toByteArray();
-
-        assertArrayEquals(randomBytes, savedFileBytes);
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void getBigChunkSize() throws Exception {
         GridFSInputFile file = _fs.createFile("512kb_bucket");
         file.setChunkSize(file.getChunkSize() * 2);
@@ -188,7 +182,7 @@ public class GridFSTest extends TestCase {
    }
 
 
-    @Test(groups = {"basic"})
+    @Test
     public void testInputStreamSkipping() throws Exception {
         //int chunkSize = 5;
         int chunkSize = GridFS.DEFAULT_CHUNKSIZE;
@@ -244,7 +238,7 @@ public class GridFSTest extends TestCase {
         assertEquals(-1, inputStream.read());
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testCustomFileID() throws IOException {
         int chunkSize = 10;
         int fileSize = (int)(3.25 * chunkSize);
@@ -267,7 +261,7 @@ public class GridFSTest extends TestCase {
             assertEquals((byte)(idx % 251), (byte)inputStream.read());
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testGetFileListWithSorting() throws Exception  {
         _fs.remove(new BasicDBObject());
 
@@ -287,14 +281,14 @@ public class GridFSTest extends TestCase {
             inputFile.save(chunkSize);
         }
 
-        DBCursor cursor =  _fs.getFileList(null,new BasicDBObject("orderTest", 1));
+        DBCursor cursor =  _fs.getFileList(null, new BasicDBObject("orderTest", 1));
         assertEquals(cursor.size(),4);
         assertEquals(cursor.next().get("_id"),1);
         assertEquals(cursor.next().get("_id"),2);
         assertEquals(cursor.next().get("_id"),3);
         assertEquals(cursor.next().get("_id"),4);
 
-         cursor =  _fs.getFileList(null,new BasicDBObject("filename", -1));
+         cursor =  _fs.getFileList(null, new BasicDBObject("filename", -1));
         assertEquals(cursor.size(),4);
         assertEquals(cursor.next().get("_id"),4);
         assertEquals(cursor.next().get("_id"),3);
@@ -302,7 +296,7 @@ public class GridFSTest extends TestCase {
         assertEquals(cursor.next().get("_id"),1);
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testFindWithSorting() throws Exception  {
         _fs.remove(new BasicDBObject());
 
@@ -337,12 +331,23 @@ public class GridFSTest extends TestCase {
         assertEquals(result.get(3).getId(),1);
     }
 
-    final DB _db;
-    final GridFS _fs;
+    @Test(expected= IllegalArgumentException.class)
+    public void testRemoveWhenObjectIdIsNull(){
+    	   ObjectId objectId=null;
+    	  _fs.remove(objectId);
+    }
+   
+    @Test(expected = IllegalArgumentException.class)
+    public void testRemoveWhenFileNameIsNull(){
+    	   String fileName =null;
+    	  _fs.remove(fileName);
+    }
     
-    public static void main( String args[] )
-        throws Exception {
-        (new GridFSTest()).runConsole();
+    @Test(expected = IllegalArgumentException.class)
+    public void testRemoveWhenQueryIsNull(){
+    	   DBObject dbObjectQuery =null;
+    	  _fs.remove(dbObjectQuery);
     }
 
+    final GridFS _fs;
 }

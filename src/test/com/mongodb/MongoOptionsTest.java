@@ -1,11 +1,11 @@
-/**
- * Copyright (C) 2011 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,10 @@
 
 package com.mongodb;
 
-import org.testng.annotations.Test;
-
 import com.mongodb.util.TestCase;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
 
 /**
  * The mongo options test.
@@ -52,6 +53,15 @@ public class MongoOptionsTest extends TestCase {
         options.readPreference = ReadPreference.secondary();
         options.cursorFinalizerEnabled = true;
         options.alwaysUseMBeans = true;
+        options.heartbeatFrequencyMS = 5;
+        options.heartbeatConnectRetryFrequencyMS = 10;
+        options.heartbeatConnectTimeoutMS = 20;
+        options.heartbeatReadTimeoutMS = 23;
+        options.acceptableLatencyDifferenceMS = 42;
+        options.minConnectionsPerHost = 5;
+        options.maxConnectionIdleTime = 50000;
+        options.maxConnectionLifeTime = 500000;
+        options.requiredReplicaSetName = "set1";
 
         final MongoOptions copy = options.copy();
         assertEquals(options.connectionsPerHost, copy.connectionsPerHost);
@@ -74,6 +84,10 @@ public class MongoOptionsTest extends TestCase {
         assertEquals(options.description, copy.description);
         assertEquals(options.readPreference, copy.readPreference);
         assertEquals(options.alwaysUseMBeans, copy.alwaysUseMBeans);
+        assertEquals(options.minConnectionsPerHost, copy.minConnectionsPerHost);
+        assertEquals(options.maxConnectionIdleTime, copy.maxConnectionIdleTime);
+        assertEquals(options.maxConnectionLifeTime, copy.maxConnectionLifeTime);
+        assertEquals(options.requiredReplicaSetName, copy.requiredReplicaSetName);
     }
 
     @Test
@@ -102,6 +116,7 @@ public class MongoOptionsTest extends TestCase {
         options.setReadPreference(ReadPreference.secondary());
         options.setCursorFinalizerEnabled(true);
         options.setAlwaysUseMBeans(true);
+        options.requiredReplicaSetName = "set1";
 
         assertEquals(options.getConnectionsPerHost(), 100);
         assertEquals(options.getThreadsAllowedToBlockForConnectionMultiplier(), 101);
@@ -123,6 +138,7 @@ public class MongoOptionsTest extends TestCase {
         assertEquals(options.getReadPreference(), ReadPreference.secondary());
         assertEquals(options.isCursorFinalizerEnabled(), true);
         assertEquals(options.isAlwaysUseMBeans(), true);
+        assertEquals(options.getRequiredReplicaSetName(), "set1");
     }
 
     @Test

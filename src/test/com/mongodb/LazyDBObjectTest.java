@@ -1,17 +1,17 @@
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.mongodb;
@@ -28,8 +28,8 @@ import org.bson.types.MaxKey;
 import org.bson.types.MinKey;
 import org.bson.types.ObjectId;
 import org.bson.types.Symbol;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -42,13 +42,15 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 @SuppressWarnings( { "unchecked" , "deprecation" } )
 public class LazyDBObjectTest extends TestCase {
-
-    public LazyDBObjectTest(){
-        cleanupDB = "com_mongodb_unittest_LazyDBObjectTest";
-        _db = cleanupMongo.getDB(cleanupDB);
-    }
 
     BSONEncoder e;
     OutputBuffer buf;
@@ -56,7 +58,7 @@ public class LazyDBObjectTest extends TestCase {
     LazyDBDecoder lazyDBDecoder;
     DefaultDBDecoder defaultDBDecoder;
 
-    @BeforeMethod
+    @Before
     public void beforeMethod() {
         e = new BasicBSONEncoder();
         buf = new BasicOutputBuffer();
@@ -311,7 +313,7 @@ public class LazyDBObjectTest extends TestCase {
         /*
         b.append( "code_scoped", new CodeWScope( "return x * 500;", test_doc ) );*/
         b.append( "str", "foobarbaz" );
-        b.append( "ref", new DBRef( _db, "testRef", test_ref_id ) );
+        b.append( "ref", new DBRef( getDatabase(), "testRef", test_ref_id ) );
         b.append( "object", test_doc );
         b.append( "array", test_arr );
         b.append( "binary", test_bin );
@@ -353,7 +355,7 @@ public class LazyDBObjectTest extends TestCase {
         assertEquals( new String( ((Binary) origDoc.get( "binary")).getData()), new String((byte[]) doc.get( "binary" )));
         assertEquals( origDoc.get( "uuid"), doc.get( "uuid" ) );
         assertEquals( ( (Pattern) origDoc.get( "regex" ) ).pattern(), ((Pattern) doc.get( "regex" ) ).pattern() );
-        assertEquals( ( (Pattern) doc.get( "regex" ) ).flags(), ((Pattern) doc.get( "regex" ) ).flags() );
+        assertEquals( ( (Pattern) origDoc.get( "regex" ) ).flags(), ((Pattern) doc.get( "regex" ) ).flags() );
     }
     
     private static class TestMapEntry implements Map.Entry<String, Object> {
@@ -379,12 +381,6 @@ public class LazyDBObjectTest extends TestCase {
         public Object setValue(Object value) {
             throw new UnsupportedOperationException();
         }
-    }
-
-    private DB _db;
-
-    public static void main( String args[] ){
-        ( new LazyDBObjectTest() ).runConsole();
     }
 }
 

@@ -1,12 +1,12 @@
-/**
- * Copyright (c) 2008 - 20112 10gen, Inc. <http://10gen.com>
- * <p/>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p/>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p/>
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,7 +22,11 @@ import com.mongodb.util.ConnectionPoolStatisticsBean;
  * A standard MXBean interface for a Mongo connection pool, for use on Java 6 and above virtual machines.
  * <p>
  * This interface is NOT part of the public API.  Be prepared for non-binary compatible changes in minor releases.
+ *
+ * @deprecated This class will be removed in 3.x versions of the driver,
+ *             so please remove it from your compile time dependencies.
  */
+@Deprecated
 public interface MongoConnectionPoolMXBean {
     /**
      * Gets the name of the pool.

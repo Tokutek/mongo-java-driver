@@ -1,22 +1,28 @@
-// GridFSFile.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+// GridFSFile.java
+
 package com.mongodb.gridfs;
+
+import com.mongodb.BasicDBObject;
+import com.mongodb.DBObject;
+import com.mongodb.MongoException;
+import com.mongodb.util.JSON;
+import org.bson.BSONObject;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,13 +31,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import org.bson.BSONObject;
-
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
-import com.mongodb.MongoException;
-import com.mongodb.util.JSON;
 
 /**
  * The abstract class representing a GridFS file
@@ -277,6 +276,15 @@ public abstract class GridFSFile implements DBObject {
     }
 
     /**
+     * Gets the GridFS associated with this file
+     *
+     * @return gridFS instance
+     */
+    protected GridFS getGridFS(){
+        return this._fs;
+    }
+
+    /**
      * Sets the GridFS associated with this file
      * @param fs
      */
@@ -284,6 +292,10 @@ public abstract class GridFSFile implements DBObject {
         _fs = fs;
     }
 
+    /**
+     * @deprecated Please use {@link #getGridFS()} & {@link #setGridFS(GridFS)} instead.
+     */
+    @Deprecated
     protected GridFS _fs = null;
 
     Object _id;

@@ -1,31 +1,31 @@
-// DBCursor.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.mongodb;
 
-import com.mongodb.DBApiLayer.Result;
 import org.bson.util.annotations.NotThreadSafe;
 
-import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 
 /** An iterator over database results.
@@ -55,7 +55,7 @@ import java.util.Set;
  * @dochub cursors
  */
 @NotThreadSafe
-public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closeable {
+public class DBCursor implements Cursor, Iterable<DBObject> {
 
     /**
      * Initializes a new database cursor
@@ -77,9 +77,75 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
     }
 
     /**
+     * Adds a comment to the query to identify queries in the database profiler output.
+     * 
+     * @mongodb.driver.manual reference/operator/meta/comment/ $comment
+     * @since 2.12
+     */
+    public DBCursor comment(final String comment) {
+        addSpecial(QueryOperators.COMMENT, comment);
+        return this;
+    }
+
+    /**
+     * Limits the number of documents a cursor will return for a query.
+     * 
+     * @mongodb.driver.manual reference/operator/meta/maxScan/ $maxScan
+     * @see #limit(int) 
+     * @since 2.12
+     */
+    public DBCursor maxScan(final int max) {
+        addSpecial(QueryOperators.MAX_SCAN, max);
+        return this;
+    }
+
+    /**
+     * Specifies an <em>exclusive</em> upper limit for the index to use in a query.
+     *
+     * @mongodb.driver.manual reference/operator/meta/max/ $max
+     * @since 2.12
+     */
+    public DBCursor max(final DBObject max) {
+        addSpecial(QueryOperators.MAX, max);
+        return this;
+    }
+
+    /**
+     * Specifies an <em>inclusive</em> lower limit for the index to use in a query. 
+     *
+     * @mongodb.driver.manual reference/operator/meta/min/ $min
+     * @since 2.12
+     */
+    public DBCursor min(final DBObject min) {
+        addSpecial(QueryOperators.MIN, min);
+        return this;
+    }
+
+    /**
+     * Forces the cursor to only return fields included in the index.
+     * @mongodb.driver.manual reference/operator/meta/returnKey/ $returnKey
+     * @since 2.12
+     */
+    public DBCursor returnKey() {
+        addSpecial(QueryOperators.RETURN_KEY, true);
+        return this;
+    }
+
+    /**
+     * Modifies the documents returned to include references to the on-disk location of each document.  The location will be returned
+     * in a property named {@code $diskLoc}
+     * @mongodb.driver.manual reference/operator/meta/showDiskLoc/ $showDiskLoc
+     * @since 2.12
+     */
+    public DBCursor showDiskLoc() {
+        addSpecial(QueryOperators.SHOW_DISK_LOC, true);
+        return this;
+    }
+
+    /**
      * Types of cursors: iterator or array.
      */
-    static enum CursorType { ITERATOR , ARRAY };
+    static enum CursorType { ITERATOR , ARRAY }
 
     /**
      * Creates a copy of an existing database cursor.
@@ -99,6 +165,7 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
         c._batchSize = _batchSize;
         c._snapshot = _snapshot;
         c._explain = _explain;
+        c._maxTimeMS = _maxTimeMS;
         if ( _specialFields != null )
             c._specialFields = new BasicDBObject( _specialFields.toMap() );
         return c;
@@ -171,6 +238,22 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
             throw new IllegalStateException( "can't hint after executing query" );
 
         _hint = indexName;
+        return this;
+    }
+
+    /**
+     * Set the maximum execution time for operations on this cursor.
+     *
+     * @param maxTime  the maximum time that the server will allow the query to run, before killing the operation. A non-zero value
+     *                 requires a server version >= 2.6
+     * @param timeUnit the time unit
+     * @return same DBCursor for chaining operations
+     * @since 2.12.0
+     *
+     * @mongodb.server.release 2.6
+     */
+    public DBCursor maxTime(final long maxTime, final TimeUnit timeUnit) {
+        _maxTimeMS = MILLISECONDS.convert(maxTime, timeUnit);
         return this;
     }
 
@@ -256,8 +339,7 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
             n = 2;
 
         if ( _it != null ) {
-        	if (_it instanceof DBApiLayer.Result)
-        		((DBApiLayer.Result)_it).setBatchSize(n);
+            _it.setBatchSize(n);
         }
 
         _batchSize = n;
@@ -282,18 +364,15 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @return the cursor id, or 0 if there is no active cursor.
      */
     public long getCursorId() {
-    	if ( _it instanceof Result )
-            return ((Result)_it).getCursorId();
-
-    	return 0;
+    	return _it == null ? 0 : _it.getCursorId();
     }
 
     /**
      * kills the current cursor on the server.
      */
     public void close() {
-    	if ( _it instanceof Result )
-            ((Result)_it).close();
+    	if (_it != null)
+            _it.close();
     }
 
     /**
@@ -315,10 +394,8 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @return
      */
     public DBCursor addOption( int option ){
-        if ( option == Bytes.QUERYOPTION_EXHAUST )
-            throw new IllegalArgumentException("The exhaust option is not user settable.");
-        
-        _options |= option;
+        setOptions(_options |= option);
+
         return this;
     }
 
@@ -327,6 +404,15 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @param options
      */
     public DBCursor setOptions( int options ){
+        if ((options & Bytes.QUERYOPTION_EXHAUST) != 0) {
+            throw new IllegalArgumentException("The exhaust option is not user settable.");
+        }
+
+        // If tailable is set, await data should be as well
+        if ((options & Bytes.QUERYOPTION_TAILABLE) != 0) {
+            options |= Bytes.QUERYOPTION_AWAITDATA;
+        }
+
         _options = options;
         return this;
     }
@@ -362,14 +448,14 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
                 .addHint(_hint)
                 .addExplain(_explain)
                 .addSnapshot(_snapshot)
-                .addSpecialFields(_specialFields);
+                .addSpecialFields(_specialFields)
+                .addMaxTimeMS(_maxTimeMS);
 
         if (_collection.getDB().getMongo().isMongosConnection()) {
             builder.addReadPreference(_readPref);
         }
 
-        _it = _collection.__find(builder.get(), _keysWanted, _skip, _batchSize, _limit,
-                _options, _readPref, getDecoder());
+        _it = _collection.find(builder.get(), _keysWanted, _skip, _batchSize, _limit, _options, _readPref, getDecoder());
     }
 
     // Only create a new decoder if there is a decoder factory explicitly set on the collection.  Otherwise return null
@@ -438,24 +524,22 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
 
     /**
      * gets the number of times, so far, that the cursor retrieved a batch from the database
-     * @return
+     * @return The number of times OP_GET_MORE has been called
+     * @deprecated there is no replacement for this method
      */
-    public int numGetMores(){
-        if ( _it instanceof DBApiLayer.Result )
-            return ((DBApiLayer.Result)_it).numGetMores();
-
-        throw new IllegalArgumentException("_it not a real result" );
+    @Deprecated
+    public int numGetMores() {
+        return _it == null ? 0 : _it.numGetMores();
     }
 
     /**
      * gets a list containing the number of items received in each batch
-     * @return
+     * @return a list containing the number of items received in each batch
+     * @deprecated there is no replacement for this method
      */
-    public List<Integer> getSizes(){
-        if ( _it instanceof DBApiLayer.Result )
-            return ((DBApiLayer.Result)_it).getSizes();
-
-        throw new IllegalArgumentException("_it not a real result" );
+    @Deprecated
+    public List<Integer> getSizes() {
+        return _it == null ? Collections.<Integer>emptyList() : _it.getSizes();
     }
 
     private boolean _hasNext() {
@@ -483,7 +567,7 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @throws MongoException
      */
     public boolean hasNext() {
-        _checkType( CursorType.ITERATOR );
+        _checkType(CursorType.ITERATOR);
         return _hasNext();
     }
 
@@ -502,7 +586,7 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @return the current element
      */
     public DBObject curr(){
-        _checkType( CursorType.ITERATOR );
+        _checkType(CursorType.ITERATOR);
         return _cur;
     }
 
@@ -581,13 +665,18 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @throws MongoException
      */
     public int count() {
-        if ( _collection == null )
-            throw new IllegalArgumentException( "why is _collection null" );
-        if ( _collection._db == null )
-            throw new IllegalArgumentException( "why is _collection._db null" );
-
-        return (int)_collection.getCount(this._query, this._keysWanted, getReadPreference());
+        return (int)_collection.getCount(this._query, this._keysWanted, 0, 0, getReadPreference(), _maxTimeMS, MILLISECONDS);
     }
+
+    /**
+     * @return the first matching document
+     *
+     * @since 2.12
+     */
+    public DBObject one() {
+        return _collection.findOne(_query, _keysWanted, _orderBy, getReadPreference(), _maxTimeMS, MILLISECONDS);
+    }
+
 
     /**
      * Counts the number of objects matching the query
@@ -597,12 +686,8 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @throws MongoException
      */
     public int size() {
-        if ( _collection == null )
-            throw new IllegalArgumentException( "why is _collection null" );
-        if ( _collection._db == null )
-            throw new IllegalArgumentException( "why is _collection._db null" );
-
-        return (int)_collection.getCount(this._query, this._keysWanted, this._limit, this._skip, getReadPreference() );
+        return (int)_collection.getCount(this._query, this._keysWanted, this._limit, this._skip, getReadPreference(), _maxTimeMS,
+                                         MILLISECONDS);
     }
 
 
@@ -636,10 +721,7 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
      * @return
      */
     public ServerAddress getServerAddress() {
-        if (_it != null && _it instanceof DBApiLayer.Result)
-            return ((DBApiLayer.Result)_it).getServerAddress();
-
-        return null;
+        return _it == null ? null : _it.getServerAddress();
     }
 
     /**
@@ -697,10 +779,10 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
     }
 
     boolean hasFinalizer() {
-        if (_it == null || ! (_it instanceof Result)) {
+        if (_it == null) {
             return false;
         }
-        return ((Result) _it).hasFinalizer();
+        return _it.hasFinalizer();
     }
 
     // ----  query setup ----
@@ -717,13 +799,14 @@ public class DBCursor implements Iterator<DBObject> , Iterable<DBObject>, Closea
     private int _skip = 0;
     private boolean _snapshot = false;
     private int _options = 0;
+    private long _maxTimeMS;
     private ReadPreference _readPref;
     private DBDecoderFactory _decoderFact;
 
     private DBObject _specialFields;
 
     // ----  result info ----
-    private Iterator<DBObject> _it = null;
+    private QueryResultIterator _it = null;
 
     private CursorType _cursorType = null;
     private DBObject _cur = null;

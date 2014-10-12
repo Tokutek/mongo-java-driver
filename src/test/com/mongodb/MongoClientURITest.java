@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2008 - 2012 10gen, Inc. <http://10gen.com>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,19 +12,24 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.mongodb;
 
-import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
+import org.junit.Test;
 
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
 import java.net.UnknownHostException;
 
-public class MongoClientURITest extends TestCase {
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+public class MongoClientURITest {
 
     @Test
     public void testUnsupportedOption() {
@@ -44,8 +49,8 @@ public class MongoClientURITest extends TestCase {
         } catch (IllegalArgumentException e) {
             // ok
         }
-
     }
+
     @Test()
     public void testSingleServer() {
         MongoClientURI u = new MongoClientURI("mongodb://db.example.com");
@@ -100,8 +105,17 @@ public class MongoClientURITest extends TestCase {
         u = new MongoClientURI("mongodb://user@host/?authMechanism=GSSAPI");
         assertEquals(MongoCredential.createGSSAPICredential(userName), u.getCredentials());
 
+        u = new MongoClientURI("mongodb://user@host/?authMechanism=GSSAPI&gssapiServiceName=foo");
+        assertEquals(MongoCredential.createGSSAPICredential(userName).withMechanismProperty("SERVICE_NAME", "foo"), u.getCredentials());
+
         u = new MongoClientURI("mongodb://user:pass@host/?authMechanism=MONGODB-CR");
         assertEquals(MongoCredential.createMongoCRCredential(userName, "admin", password), u.getCredentials());
+
+        u = new MongoClientURI("mongodb://user@host/?authMechanism=MONGODB-X509");
+        assertEquals(MongoCredential.createMongoX509Credential(userName), u.getCredentials());
+
+        u = new MongoClientURI("mongodb://bob:pwd@localhost/?authMechanism=PLAIN&authSource=db1");
+        assertEquals(MongoCredential.createPlainCredential("bob", "db1", "pwd".toCharArray()), u.getCredentials());
 
         u = new MongoClientURI("mongodb://user:pass@host/?authSource=test");
         assertEquals(MongoCredential.createMongoCRCredential(userName, "test", password), u.getCredentials());
@@ -187,16 +201,22 @@ public class MongoClientURITest extends TestCase {
     public void testOptions() {
         MongoClientURI uAmp = new MongoClientURI("mongodb://localhost/?" +
                 "maxPoolSize=10&waitQueueMultiple=5&waitQueueTimeoutMS=150&" +
+                "minPoolSize=7&maxIdleTimeMS=1000&maxLifeTimeMS=2000&" +
+                "replicaSet=test&" +
                 "connectTimeoutMS=2500&socketTimeoutMS=5500&autoConnectRetry=true&" +
                 "slaveOk=true&safe=false&w=1&wtimeout=2500&fsync=true");
         assertOnOptions(uAmp.getOptions());
         MongoClientURI uSemi = new MongoClientURI("mongodb://localhost/?" +
                 "maxPoolSize=10;waitQueueMultiple=5;waitQueueTimeoutMS=150;" +
+                "minPoolSize=7;maxIdleTimeMS=1000;maxLifeTimeMS=2000;" +
+                "replicaSet=test;" +
                 "connectTimeoutMS=2500;socketTimeoutMS=5500;autoConnectRetry=true;" +
                 "slaveOk=true;safe=false;w=1;wtimeout=2500;fsync=true");
         assertOnOptions(uSemi.getOptions());
         MongoClientURI uMixed = new MongoClientURI("mongodb://localhost/test?" +
                 "maxPoolSize=10&waitQueueMultiple=5;waitQueueTimeoutMS=150;" +
+                "minPoolSize=7&maxIdleTimeMS=1000;maxLifeTimeMS=2000&" +
+                "replicaSet=test;" +
                 "connectTimeoutMS=2500;socketTimeoutMS=5500&autoConnectRetry=true;" +
                 "slaveOk=true;safe=false&w=1;wtimeout=2500;fsync=true");
         assertOnOptions(uMixed.getOptions());
@@ -248,14 +268,57 @@ public class MongoClientURITest extends TestCase {
                 uri.getOptions().getReadPreference());
     }
 
+    @Test()
+    public void testSingleIPV6Server() {
+        MongoClientURI u = new MongoClientURI("mongodb://[2010:836B:4179::836B:4179]");
+        assertEquals(1, u.getHosts().size());
+        assertEquals("[2010:836B:4179::836B:4179]", u.getHosts().get(0));
+    }
+
+    @Test()
+    public void testSingleIPV6ServerWithPort() {
+        MongoClientURI u = new MongoClientURI("mongodb://[2010:836B:4179::836B:4179]:1000");
+        assertEquals(1, u.getHosts().size());
+        assertEquals("[2010:836B:4179::836B:4179]:1000", u.getHosts().get(0));
+    }
+
+    @Test()
+    public void testSingleIPV6ServerWithUserAndPass() {
+        MongoClientURI u = new MongoClientURI("mongodb://user:pass@[2010:836B:4179::836B:4179]");
+        assertEquals("user", u.getUsername());
+        assertArrayEquals("pass".toCharArray(), u.getPassword());
+        assertEquals(1, u.getHosts().size());
+        assertEquals("[2010:836B:4179::836B:4179]", u.getHosts().get(0));
+    }
+
+    @Test()
+    public void testMultipleIPV6Servers() {
+        MongoClientURI u = new MongoClientURI("mongodb://[::1],[2010:836B:4179::836B:4179]");
+        assertEquals(2, u.getHosts().size());
+        assertEquals("[::1]", u.getHosts().get(0));
+        assertEquals("[2010:836B:4179::836B:4179]", u.getHosts().get(1));
+    }
+
+    @Test()
+    public void testMultipleIPV6ServersWithPorts() {
+        MongoClientURI u = new MongoClientURI("mongodb://[::1]:1000,[2010:836B:4179::836B:4179]:2000");
+        assertEquals(2, u.getHosts().size());
+        assertEquals("[::1]:1000", u.getHosts().get(0));
+        assertEquals("[2010:836B:4179::836B:4179]:2000", u.getHosts().get(1));
+    }
+
     @SuppressWarnings("deprecation")
     private void assertOnOptions(MongoClientOptions options) {
         assertEquals(10, options.getConnectionsPerHost(), 10);
+        assertEquals(7, options.getMinConnectionsPerHost());
+        assertEquals(1000, options.getMaxConnectionIdleTime());
+        assertEquals(2000, options.getMaxConnectionLifeTime());
         assertEquals(5, options.getThreadsAllowedToBlockForConnectionMultiplier());
         assertEquals(150, options.getMaxWaitTime());
         assertEquals(5500, options.getSocketTimeout());
         assertTrue(options.isAutoConnectRetry());
         assertEquals(new WriteConcern(1, 2500, true), options.getWriteConcern());
         assertEquals(ReadPreference.secondaryPreferred(), options.getReadPreference());
+        assertEquals("test", options.getRequiredReplicaSetName());
     }
 }

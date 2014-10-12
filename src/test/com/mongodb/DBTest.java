@@ -1,138 +1,124 @@
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 package com.mongodb;
 
 import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
+import org.hamcrest.Description;
+import org.hamcrest.Matcher;
+import org.hamcrest.TypeSafeMatcher;
+import org.junit.Ignore;
+import org.junit.Test;
 
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.List;
+
+import static com.mongodb.ReadPreference.primary;
+import static com.mongodb.ReadPreference.primaryPreferred;
+import static com.mongodb.ReadPreference.secondary;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.hasItem;
+import static org.hamcrest.CoreMatchers.hasItems;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.sameInstance;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
+import static org.junit.Assume.assumeTrue;
 
 public class DBTest extends TestCase {
 
-    public DBTest() {
-        super();
-        cleanupDB = "com_mongodb_unittest_DBTest";
-        _db = cleanupMongo.getDB(cleanupDB);
+    @Test
+    public void shouldIgnoreCaseWhenCheckingIfACollectionExists() {
+        // Given
+        getDatabase().getCollection("foo1").drop();
+        assertFalse(getDatabase().collectionExists("foo1"));
+
+        // When
+        getDatabase().createCollection("foo1", new BasicDBObject());
+
+        // Then
+        assertTrue(getDatabase().collectionExists("foo1"));
+        assertTrue(getDatabase().collectionExists("FOO1"));
+        assertTrue(getDatabase().collectionExists("fOo1"));
+
+        // Finally
+        getDatabase().getCollection("foo1").drop();
     }
 
-    @Test(groups = {"basic"})
-    public void testCreateCollection() {
-        _db.getCollection("foo1").drop();
-        _db.getCollection("foo2").drop();
-        _db.getCollection("foo3").drop();
-        _db.getCollection("foo4").drop();
+    @Test
+    public void shouldReturnCorrectValueForReadPreferenceDependingUponTheCommand() throws UnknownHostException {
+        assumeTrue(isReplicaSet(getMongoClient()));
 
-        BasicDBObject o1 = new BasicDBObject("capped", false);
-        DBCollection c = _db.createCollection("foo1", o1);
+        Mongo mongo = new MongoClient(new MongoClientURI("mongodb://localhost:27017,localhost:27018,localhost:27019"));
 
-        DBObject o2 = BasicDBObjectBuilder.start().add("capped", true)
-                .add("size", 100000).add("max", 10).get();
-        c = _db.createCollection("foo2", o2);
-        for (int i = 0; i < 30; i++) {
-            c.insert(new BasicDBObject("x", i));
-        }
-        assertTrue(c.find().count() <= 10);
 
-        DBObject o3 = BasicDBObjectBuilder.start().add("capped", true)
-                .add("size", 1000).add("max", 2).get();
-        c = _db.createCollection("foo3", o3);
-        for (int i = 0; i < 30; i++) {
-            c.insert(new BasicDBObject("x", i));
-        }
-        assertEquals(c.find().count(), 2);
+        DB db = mongo.getDB(getDatabase().getName());
 
-        try {
-            DBObject o4 = BasicDBObjectBuilder.start().add("capped", true)
-                    .add("size", -20).get();
-            c = _db.createCollection("foo4", o4);
-        } catch (MongoException e) {
-            return;
-        }
-        assertEquals(0, 1);
-    }
-
-    @Test(groups = {"basic"})
-    public void testForCollectionExistence() {
-        _db.getCollection("foo1").drop();
-        _db.getCollection("foo2").drop();
-        _db.getCollection("foo3").drop();
-        _db.getCollection("foo4").drop();
-
-        assertFalse(_db.collectionExists("foo1"));
-
-        BasicDBObject o1 = new BasicDBObject("capped", false);
-        DBCollection c = _db.createCollection("foo1", o1);
-
-        assertTrue(_db.collectionExists("foo1"), "Collection 'foo' was supposed to be created, but 'collectionExists' did not return true.");
-        assertTrue(_db.collectionExists("FOO1"));
-        assertTrue(_db.collectionExists("fOo1"));
-
-        _db.getCollection("foo1").drop();
-
-        assertFalse(_db.collectionExists("foo1"));
-    }
-
-    @Test(groups = {"basic"})
-    public void testReadPreferenceObedience() {
         DBObject obj = new BasicDBObject("mapreduce", 1).append("out", "myColl");
-        assertEquals(ReadPreference.primary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(primary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("mapreduce", 1).append("out", new BasicDBObject("replace", "myColl"));
-        assertEquals(ReadPreference.primary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(primary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("mapreduce", 1).append("out", new BasicDBObject("inline", 1));
-        assertEquals(ReadPreference.secondary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(secondary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("mapreduce", 1).append("out", new BasicDBObject("inline", null));
-        assertEquals(ReadPreference.primary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(primary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("getnonce", 1);
-        assertEquals(ReadPreference.primaryPreferred(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(primaryPreferred(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("authenticate", 1);
-        assertEquals(ReadPreference.primaryPreferred(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(primaryPreferred(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("count", 1);
-        assertEquals(ReadPreference.secondary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(secondary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("count", 1);
-        assertEquals(ReadPreference.secondary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(secondary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("serverStatus", 1);
-        assertEquals(ReadPreference.primary(), _db.getCommandReadPreference(obj, ReadPreference.secondary()));
+        assertEquals(primary(), db.getCommandReadPreference(obj, secondary()));
 
         obj = new BasicDBObject("count", 1);
-        assertEquals(ReadPreference.primary(), _db.getCommandReadPreference(obj, null));
+        assertEquals(primary(), db.getCommandReadPreference(obj, null));
 
         obj = new BasicDBObject("collStats", 1);
-        assertEquals(ReadPreference.secondaryPreferred(), _db.getCommandReadPreference(obj, ReadPreference.secondaryPreferred()));
+        assertEquals(ReadPreference.secondaryPreferred(), db.getCommandReadPreference(obj, ReadPreference.secondaryPreferred()));
 
         obj = new BasicDBObject("text", 1);
-        assertEquals(ReadPreference.secondaryPreferred(), _db.getCommandReadPreference(obj, ReadPreference.secondaryPreferred()));
+        assertEquals(ReadPreference.secondaryPreferred(), db.getCommandReadPreference(obj, ReadPreference.secondaryPreferred()));
+
+        obj = new BasicDBObject("parallelCollectionScan", 1);
+        assertEquals(ReadPreference.secondaryPreferred(), db.getCommandReadPreference(obj, ReadPreference.secondaryPreferred()));
     }
 
-    @Test(groups = {"basic"})
-    public void testEnsureConnection() throws UnknownHostException {
+    @Test
+    public void shouldNotThrowAnErrorWhenEnsureConnectionCalledAfterRequestStart() throws UnknownHostException {
 
         Mongo m = new MongoClient(Arrays.asList(new ServerAddress("localhost")));
 
-        if (isStandalone(m)) {
-            return;
-        }
+        assumeFalse(isStandalone(cleanupMongo));
         try {
             DB db = m.getDB("com_mongodb_unittest_DBTest");
             db.requestStart();
@@ -146,10 +132,10 @@ public class DBTest extends TestCase {
         }
     }
 
-    @Test(groups = {"basic"})
-    public void whenRequestStartCallsAreNestedThenTheConnectionShouldBeReleaseOnLastCallToRequestEnd() throws UnknownHostException {
+    @Test
+    public void shouldReleaseConnectionOnLastCallToRequestEndWhenRequestStartCallsAreNested() throws UnknownHostException {
         Mongo m = new MongoClient(Arrays.asList(new ServerAddress("localhost")),
-                MongoClientOptions.builder().connectionsPerHost(1).maxWaitTime(10).build());
+                                  MongoClientOptions.builder().connectionsPerHost(1).maxWaitTime(10000).build());
         DB db = m.getDB("com_mongodb_unittest_DBTest");
 
         try {
@@ -170,58 +156,439 @@ public class DBTest extends TestCase {
         }
     }
 
-    @Test(groups = {"basic"})
-    public void whenRequestDoneIsCalledWithoutFirstCallingRequestStartNoExceptionIsThrown() throws UnknownHostException {
-        _db.requestDone();
+    @Test
+    public void shouldReturnFailureWithErrorMessageWhenExecutingInvalidCommand() {
+        // mongos 2.2 sets the query failure bit for unrecognized commands
+        assumeFalse(isSharded(getMongoClient()) && !serverIsAtLeastVersion(2.4));
+
+        // Given
+        DB database = getDatabase();
+
+        // When
+        CommandResult commandResult = database.command(new BasicDBObject("NotRealCommandName", 1));
+
+        // Then
+        assertThat(commandResult.ok(), is(false));
+        assertThat(commandResult.getErrorMessage(), is("no such cmd: NotRealCommandName"));
     }
-
-
-    /*public static class Person extends DBObject {
-        
-        public Person(){
-
-        }
-
-        Person( String name ){
-            _name = name;
-        }
-
-        public String getName(){
-            return _name;
-        }
-
-        public void setName(String name){
-            _name = name;
-        }
-
-        String _name;
-    }
-
-    public DBTest()
-        throws IOException {
-        _db = new Mongo( "127.0.0.1" , "dbbasetest" );        
-    }
-    
 
     @Test
-    public void test1(){
-        DBCollection c = _db.getCollection( "persen.test1" );
-        c.drop();
-        c.setObjectClass( Person.class );
-        
-        Person p = new Person( "eliot" );
-        c.save( p );
+    public void shouldReturnOKWhenASimpleCommandExecutesSuccessfully() {
+        // Given
+        DB database = getDatabase();
 
-        DBObject out = c.findOne();
-        assertEquals( "eliot" , out.get( "Name" ) );
-        assertTrue( out instanceof Person , "didn't come out as Person" );
+        // When
+        CommandResult commandResult = database.command(new BasicDBObject("isMaster", 1));
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((Boolean) commandResult.get("ismaster"), is(true));
     }
-    */
 
-    final DB _db;
+    @Test
+    @SuppressWarnings("deprecation") // this functionality needs testing, but the tests will be removed/replaced in 3.0
+    public void shouldRunCommandAgainstSecondaryWhenSlaveOkOrReadPreferenceSecondaryOrBothAreBothSet() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
 
-    public static void main(String args[])
-            throws Exception {
-        (new DBTest()).runConsole();
+        try {
+            //Sadly yes, this does test more than one thing.  But the overall goal is the same
+            // When
+            CommandResult commandResult = database.command(new BasicDBObject("dbstats", 1), Bytes.QUERYOPTION_SLAVEOK, secondary());
+            // Then
+            assertThat(commandResult.ok(), is(true));
+            assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+
+            // When
+            commandResult = database.command(new BasicDBObject("dbstats", 1), 0, secondary());
+            // Then
+            assertThat(commandResult.ok(), is(true));
+            assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+
+            // When
+            commandResult = database.command(new BasicDBObject("dbstats", 1), Bytes.QUERYOPTION_SLAVEOK, primary());
+            // Then
+            assertThat(commandResult.ok(), is(true));
+            assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+        } finally {
+            database.dropDatabase();
+        }
+    }
+
+    @Test
+    public void shouldRunCommandAgainstSecondaryWhenOnlySecondaryReadPreferenceSpecified() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
+
+        // When
+        CommandResult commandResult = database.command(new BasicDBObject("dbstats", 1), secondary());
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation") // this functionality needs testing, but the tests will be removed/replaced in 3.0
+    @Ignore("Intermittent, not sure this is doing what it thinks it is")
+    public void shouldRunStringCommandAgainstSecondaryWhenSlaveOkOptionSpecified() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
+
+        // When
+        CommandResult commandResult = database.command("dbstats", Bytes.QUERYOPTION_SLAVEOK);
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+    }
+
+    @Test
+    public void shouldRunStringCommandAgainstSecondaryWhenSecondaryReadPreferenceSpecified() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
+
+        // When
+        CommandResult commandResult = database.command("dbstats", secondary());
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+    }
+
+    @Test
+    public void shouldRunCommandAgainstSecondaryWhenOnlySecondaryReadPreferenceSpecifiedAlongWithEncoder() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
+
+        // When
+        CommandResult commandResult = database.command(new BasicDBObject("dbstats", 1), secondary(), DefaultDBEncoder.FACTORY.create());
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((String) commandResult.get("serverUsed"), not(containsString(":27017")));
+    }
+
+    @Test
+    public void shouldRunCommandAgainstPrimaryWhenOnlyPrimaryReadPreferenceSpecified() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
+
+        // When
+        CommandResult commandResult = database.command(new BasicDBObject("dbstats", 1), primary());
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((String) commandResult.get("serverUsed"), containsString(":27017"));
+    }
+
+    @Test
+    public void shouldOverrideDefaultReadPreferenceWhenCommandReadPreferenceSpecified() throws UnknownHostException {
+        // Given
+        assumeTrue(isReplicaSet(cleanupMongo));
+        DB database = getReplicaSetDB();
+        database.setReadPreference(secondary());
+
+        // When
+        CommandResult commandResult = database.command(new BasicDBObject("dbstats", 1), primary());
+
+        // Then
+        assertThat(commandResult.ok(), is(true));
+        assertThat((String) commandResult.get("serverUsed"), containsString(":27017"));
+    }
+
+    @Test
+    public void shouldNotThrowAnExceptionwhenRequestDoneIsCalledWithoutFirstCallingRequestStart() throws UnknownHostException {
+        getDatabase().requestDone();
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void shouldThrowAnExceptionWhenDBNameContainsSpaces() {
+        cleanupMongo.getDB("foo bar");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void shouldThrowAnExceptionWhenDBNameIsEmpty() {
+        cleanupMongo.getDB("");
+    }
+
+    @Test
+    public void shouldGetDefaultWriteConcern() {
+        assertEquals(WriteConcern.ACKNOWLEDGED, getDatabase().getWriteConcern());
+    }
+
+    @Test
+    public void shouldGetDefaultReadPreference() {
+        assertEquals(ReadPreference.primary(), getDatabase().getReadPreference());
+    }
+
+    @Test
+    public void shouldReturnCachedCollectionObjectIfExists() {
+        DBCollection collection1 = getDatabase().getCollection("test");
+        DBCollection collection2 = getDatabase().getCollection("test");
+        assertThat("Checking that references are equal", collection1, sameInstance(collection2));
+    }
+
+    @Test
+    public void shouldDropItself() {
+        // given
+        String databaseName = "drop-test-" + System.nanoTime();
+        DB db = getMongoClient().getDB(databaseName);
+        // creates the database in a much faster way than inserting something into it
+        db.getStats();
+        assertThat(cleanupMongo.getDatabaseNames(), hasItem(databaseName));
+
+        // when
+        db.dropDatabase();
+
+        // then
+        assertThat(cleanupMongo.getDatabaseNames(), not(hasItem(databaseName)));
+    }
+
+    @Test
+    public void shouldGetCollectionNames() {
+        getDatabase().dropDatabase();
+
+        String[] collectionNames = {"c1", "c2", "c3"};
+
+        for (final String name : collectionNames) {
+            getDatabase().createCollection(name, new BasicDBObject());
+        }
+
+        assertThat(getDatabase().getCollectionNames(), hasItems(collectionNames));
+    }
+
+    @Test(expected = MongoException.class)
+    public void shouldReceiveAnErrorIfCreatingCappedCollectionWithoutSize() {
+        getDatabase().createCollection("someName", new BasicDBObject("capped", true));
+    }
+
+    @Test
+    public void shouldCreateCappedCollection() {
+        collection.drop();
+        String collectionName = collection.getName();
+        getDatabase().createCollection(collection.getName(), new BasicDBObject("capped", true)
+                                                             .append("size", 242880));
+        assertTrue(getDatabase().getCollection(collectionName).isCapped());
+    }
+
+    @Test
+    public void shouldCreateCappedCollectionWithMaxNumberOfDocuments() {
+        collection.drop();
+        String collectionName = collection.getName();
+        DBCollection cappedCollectionWithMax = getDatabase().createCollection(collectionName, new BasicDBObject("capped", true)
+                                                                                              .append("size", 242880)
+                                                                                              .append("max", 10));
+
+//        assertThat((Boolean) cappedCollectionWithMax.getStats().get("capped"), is(true));
+        assertThat((Integer) cappedCollectionWithMax.getStats().get("max"), is(10));
+
+        for (int i = 0; i < 11; i++) {
+            cappedCollectionWithMax.insert(new BasicDBObject("x", i));
+        }
+        assertThat(cappedCollectionWithMax.find().count(), is(10));
+
+    }
+
+    @Test(expected = CommandFailureException.class)
+    public void shouldThrowErrorIfCreatingACappedCollectionWithANegativeSize() {
+        collection.drop();
+        DBObject creationOptions = BasicDBObjectBuilder.start().add("capped", true)
+                                                       .add("size", -20).get();
+        getDatabase().createCollection(collection.getName(), creationOptions);
+    }
+
+    @Test
+    public void shouldCreateUncappedCollection() {
+        collection.drop();
+        String collectionName = collection.getName();
+
+        BasicDBObject creationOptions = new BasicDBObject("capped", false);
+        getDatabase().createCollection(collectionName, creationOptions);
+
+        assertFalse(getDatabase().getCollection(collectionName).isCapped());
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    public void shouldDoEval() {
+        assumeFalse(getDatabase().isAuthenticated());
+        String code = "function(name, incAmount) {\n"
+                      + "var doc = db.myCollection.findOne( { name : name } );\n"
+                      + "doc = doc || { name : name , num : 0 , total : 0 , avg : 0 , _id: 1 };\n"
+                      + "doc.num++;\n"
+                      + "doc.total += incAmount;\n"
+                      + "doc.avg = doc.total / doc.num;\n"
+                      + "db.myCollection.save( doc );\n"
+                      + "return doc;\n"
+                      + "}";
+        getDatabase().doEval(code, "eliot", 5);
+        assertEquals(getDatabase().getCollection("myCollection").findOne(), new BasicDBObject("_id", 1.0)
+                                                                            .append("avg", 5.0)
+                                                                            .append("num", 1.0)
+                                                                            .append("name", "eliot")
+                                                                            .append("total", 5.0));
+    }
+
+    @Test(expected = MongoException.class)
+    public void shouldThrowErrorwhileDoingEval() {
+        String code = "function(a, b) {\n"
+                      + "var doc = db.myCollection.findOne( { name : b } );\n"
+                      + "}";
+        getDatabase().eval(code, 1);
+    }
+
+    @Test
+    public void shouldGetStats() {
+        assumeFalse(isSharded(getMongoClient()));
+        assertThat(getDatabase().getStats(), hasFields(new String[]{"collections", "avgObjSize",
+                                                                    "indexes", "db", "indexSize", "storageSize"}));
+    }
+
+    @Test
+    public void shouldExecuteCommand() {
+        CommandResult commandResult = getDatabase().command(new BasicDBObject("isMaster", 1));
+        assertThat(commandResult, hasFields(new String[]{"ismaster", "maxBsonObjectSize", "ok", "serverUsed"}));
+    }
+
+    @Test
+    public void shouldNotThrowAnExceptionOnCommandFailure() {
+        CommandResult commandResult = getDatabase().command(new BasicDBObject("collStats", "a" + System.currentTimeMillis()));
+        assertThat(commandResult, hasFields(new String[]{"serverUsed", "ok", "errmsg"}));
+    }
+
+    @Test
+    public void shouldAddReadOnlyUser() {
+        String userName = "newUser";
+        String pwd = "pwd";
+        getDatabase().addUser(userName, pwd.toCharArray(), true);
+        try {
+            assertCorrectUserExists(userName, pwd, true, getDatabase());
+        } finally {
+            getDatabase().removeUser(userName);
+        }
+    }
+
+    @Test
+    public void shouldAddReadWriteUser() {
+        String userName = "newUser";
+        String pwd = "pwd";
+        getDatabase().addUser(userName, pwd.toCharArray(), false);
+        try {
+            assertCorrectUserExists(userName, pwd, false, getDatabase());
+        } finally {
+            getDatabase().removeUser(userName);
+        }
+    }
+
+    @Test
+    public void shouldAddReadWriteAdminUser() throws UnknownHostException {
+        String userName = "newUser";
+        String pwd = "pwd";
+        MongoClient mongoClient = new MongoClient(getMongoClientURI());
+        DB adminDB = mongoClient.getDB("admin");
+        adminDB.addUser(userName, pwd.toCharArray(), false);
+        try {
+            assertTrue(adminDB.authenticate(userName, pwd.toCharArray()));
+            assertCorrectUserExists(userName, pwd, false, adminDB);
+        } finally {
+            adminDB.removeUser(userName);
+            mongoClient.close();
+        }
+    }
+
+
+    @Test
+    public void shouldAddReadOnlyAdminUser() throws UnknownHostException {
+        String readWriteUserName = "newUserReadWrite";
+        String readOnlyUserName = "newUser";
+        String pwd = "pwd";
+        MongoClient mongoClient = new MongoClient(getMongoClientURI());
+        DB adminDB = mongoClient.getDB("admin");
+        adminDB.addUser(readWriteUserName, pwd.toCharArray(), false);
+        adminDB.authenticate(readWriteUserName, pwd.toCharArray());
+        adminDB.addUser(readOnlyUserName, pwd.toCharArray(), true);
+        try {
+            assertCorrectUserExists(readOnlyUserName, pwd, true, adminDB);
+        } finally {
+            adminDB.removeUser(readOnlyUserName);
+            adminDB.removeUser(readWriteUserName);
+            mongoClient.close();
+        }
+    }
+
+    @Test
+    public void shouldRemoveUser() {
+        String userName = "newUser";
+        getDatabase().addUser(userName, "pwd".toCharArray(), true);
+        getDatabase().removeUser(userName);
+        assertThatUserIsRemoved(userName, getDatabase());
+    }
+
+    private void assertThatUserIsRemoved(final String userName, final DB database) {
+        if (serverIsAtLeastVersion(2.6)) {
+            CommandResult usersInfo = database.command(new BasicDBObject("usersInfo", userName));
+            assertEquals(0, ((List) usersInfo.get("users")).size());
+        }
+        else {
+            assertNull(database.getCollection("system.users").findOne(new BasicDBObject("user", userName)));
+        }
+    }
+
+
+    private void assertCorrectUserExists(final String userName, final String password, final boolean isReadOnly, final DB database) {
+        if (serverIsAtLeastVersion(2.6, database.getMongo())) {
+            CommandResult usersInfo = database.command(new BasicDBObject("usersInfo", userName));
+            DBObject user = (DBObject) ((List) usersInfo.get("users")).get(0);
+            assertEquals(userName, user.get("user"));
+            assertEquals(database.getName(), user.get("db"));
+            assertEquals(getExpectedRole(isReadOnly, database), ((DBObject) ((List) user.get("roles")).get(0)).get("role"));
+        }
+        else {
+            assertEquals(new BasicDBObject("user", userName).append("readOnly", isReadOnly)
+                                                            .append("pwd", getDatabase()._hash(userName, password.toCharArray())),
+                         database.getCollection("system.users").findOne(new BasicDBObject("user", userName),
+                                                                             new BasicDBObject("_id", 0)));
+        }
+    }
+
+    private String getExpectedRole(final boolean isReadOnly, final DB database) {
+        if (database.getName().equals("admin")) {
+           return isReadOnly ? "readAnyDatabase" : "root";
+        } else {
+           return isReadOnly ? "read" : "dbOwner";
+        }
+    }
+
+
+    private DB getReplicaSetDB() throws UnknownHostException {
+        Mongo mongo = new MongoClient(Arrays.asList(new ServerAddress("127.0.0.1"), new ServerAddress("127.0.0.1", 27018)));
+        return mongo.getDB("database-" + System.nanoTime());
+    }
+
+    private static Matcher<DBObject> hasFields(final String[] fields) {
+        return new TypeSafeMatcher<DBObject>() {
+            @Override
+            protected boolean matchesSafely(final DBObject item) {
+                for (final String fieldName : fields) {
+                    if (!item.containsField(fieldName)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            @Override
+            public void describeTo(final Description description) {
+                description.appendText(" has fields ")
+                           .appendValue(fields);
+            }
+        };
     }
 }

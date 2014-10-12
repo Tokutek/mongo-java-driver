@@ -1,36 +1,40 @@
-// CommandResult.java
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// CommandResult.java
+
 
 
 package com.mongodb;
 
+
+import java.util.List;
 
 /**
  * A simple wrapper for the result of getLastError() calls and other commands
  */
 public class CommandResult extends BasicDBObject {
 
-    CommandResult(ServerAddress srv) {
-        if (srv == null) {
+    CommandResult(ServerAddress serverAddress) {
+        if (serverAddress == null) {
             throw new IllegalArgumentException("server address is null");
         }
-        _host = srv;
+        _host = serverAddress;
         //so it is shown in toString/debug
-        put("serverUsed", srv.toString());
+        put("serverUsed", serverAddress.toString());
     }
 
     /**
@@ -38,17 +42,14 @@ public class CommandResult extends BasicDBObject {
      * @return True if ok
      */
     public boolean ok(){
-        Object o = get( "ok" );
-        if ( o == null )
-            throw new IllegalArgumentException( "'ok' should never be null..." );
-
-        if ( o instanceof Boolean )
-            return (Boolean) o;
-
-        if ( o instanceof Number )
-            return ((Number)o).intValue() == 1;
-
-        throw new IllegalArgumentException( "can't figure out what to do with: " + o.getClass().getName() );
+        Object okValue = get("ok");
+        if (okValue instanceof Boolean) {
+            return (Boolean) okValue;
+        } else if (okValue instanceof Number) {
+            return ((Number) okValue).intValue() == 1;
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -68,27 +69,47 @@ public class CommandResult extends BasicDBObject {
      */
     public MongoException getException() {
         if ( !ok() ) {   // check for command failure
-            return new CommandFailureException( this );
-        } else if ( hasErr() ) { // check for errors reported by getlasterror command
-            if (getCode() == 11000 || getCode() == 11001 || getCode() == 12582) {
-                return new MongoException.DuplicateKey(this);
+            if (getCode() == 50) {
+                return new MongoExecutionTimeoutException(getCode(), getErrorMessage());
             }
             else {
-                return new WriteConcernException(this);
+                return new CommandFailureException( this );
             }
+        } else if (hasErr()) {
+            return getWriteException();
+        } else {
+            return null;
         }
+    }
 
-        return null;
+    private MongoException getWriteException() {
+        int code = getCode();
+        if (code == 11000 || code == 11001 || code == 12582) {
+            return new MongoException.DuplicateKey(this);
+        } else {
+            return new WriteConcernException(this);
+        }
     }
 
     /**
      * returns the "code" field, as an int
      * @return -1 if there is no code
      */
+    @SuppressWarnings("unchecked")
     int getCode() {
-        int code = -1;
-        if ( get( "code" ) instanceof Number )
-            code = ((Number)get("code")).intValue();
+        int code = getInt("code", -1);
+
+        // mongos may return a list of documents representing getlasterror responses from each shard.  Return the one with a matching
+        // "err" field, so that it can be used to get the error code
+        if (code == -1 && get("errObjects") != null) {
+            for (BasicDBObject curErrorDocument : (List<BasicDBObject>) get("errObjects")) {
+                if (get("err").equals(curErrorDocument.get("err"))) {
+                    code = curErrorDocument.getInt("code", -1);
+                    break;
+                }
+            }
+        }
+
         return code;
     }
 
@@ -97,8 +118,8 @@ public class CommandResult extends BasicDBObject {
      * @return if it has it, and isn't null
      */
     boolean hasErr(){
-        Object o = get( "err" );
-        return (o != null && ( (String) o ).length() > 0 );
+        String err = getString("err");
+        return err != null && err.length() > 0;
     }
 
     /**

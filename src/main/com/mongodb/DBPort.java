@@ -1,20 +1,20 @@
-// DBPort.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// DBPort.java
 
 package com.mongodb;
 
@@ -37,23 +37,28 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static org.bson.util.Assertions.isTrue;
 
 /**
  * represents a Port to the database, which is effectively a single connection to a server
  * Methods implemented at the port level should throw the raw exceptions like IOException,
  * so that the connector above can make appropriate decisions on how to handle.
+ *
+ * @deprecated This class is NOT a part of public API and will be dropped in 3.x versions.
  */
-public class DBPort {
+@Deprecated
+public class DBPort implements Connection {
     
     /**
      * the default port
@@ -69,104 +74,126 @@ public class DBPort {
      */
     @SuppressWarnings("deprecation")
     public DBPort( ServerAddress addr ){
-        this( addr , null , new MongoOptions() );
+        this( addr , null , new MongoOptions(), 0 );
     }
     
-    DBPort( ServerAddress addr, DBPortPool pool, MongoOptions options ){
+    DBPort( ServerAddress addr, PooledConnectionProvider pool, MongoOptions options, int generation ) {
         _options = options;
         _sa = addr;
-        _addr = addr.getSocketAddress();
-        _pool = pool;
-
-        _hashCode = _addr.hashCode();
+        _addr = addr;
+        provider = pool;
+        this.generation = generation;
 
         _logger = Logger.getLogger( _rootLogger.getName() + "." + addr.toString() );
-        _decoder = _options.dbDecoderFactory.create();
+        try {
+            ensureOpen();
+            _decoder = _options.dbDecoderFactory.create();
+            openedAt = System.currentTimeMillis();
+            lastUsedAt = openedAt;
+        } catch (IOException e) {
+            throw new MongoException.Network("Exception opening the socket", e);
+        }
+    }
+
+    /**
+     * Gets the generation of this connection.  This can be used by connection pools to track whether the connection is stale.
+     *
+     * @return the generation.
+     */
+    @Override
+    public int getGeneration() {
+        return generation;
+    }
+
+    /**
+     * Returns the time at which this connection was opened, or {@code Long.MAX_VALUE} if it has not yet been opened.
+     *
+     * @return the time when this connection was opened, in milliseconds since the epoch.
+     */
+    @Override
+    public long getOpenedAt() {
+        return openedAt;
+    }
+
+    /**
+     * Returns the time at which this connection was last used, or {@code Long.MAX_VALUE} if it has not yet been used.
+     *
+     * @return the time when this connection was last used, in milliseconds since the epoch.
+     */
+    @Override
+    public long getLastUsedAt() {
+        return lastUsedAt;
     }
 
     Response call( OutMessage msg , DBCollection coll ) throws IOException{
-        return go( msg, coll );
+        isTrue("open", !closed);
+        return call(msg, coll, null);
     }
 
-    Response call(OutMessage msg, DBCollection coll, DBDecoder decoder) throws IOException{
-        return go( msg, coll, false, decoder);
+    Response call(final OutMessage msg, final DBCollection coll, final DBDecoder decoder) throws IOException{
+        isTrue("open", !closed);
+        return doOperation(new Operation<Response>() {
+            @Override
+            public Response execute() throws IOException {
+                setActiveState(new ActiveState(msg));
+                msg.prepare();
+                msg.pipe(_out);
+                return new Response(_sa, coll, _in, (decoder == null ? _decoder : decoder));
+            }
+        });
     }
     
-    void say( OutMessage msg )
-        throws IOException {
-        go( msg , null );
-    }
-    
-    private synchronized Response go( OutMessage msg , DBCollection coll )
-        throws IOException {
-        return go( msg , coll , false, null );
-    }
-
-    private synchronized Response go( OutMessage msg , DBCollection coll , DBDecoder decoder ) throws IOException{
-        return go( msg, coll, false, decoder );
-    }
-
-    private synchronized Response go(OutMessage msg, DBCollection coll, boolean forceResponse, DBDecoder decoder)
-        throws IOException {
-
-        if ( _processingResponse ){
-            if ( coll == null ){
-                // this could be a pipeline and should be safe
+    void say( final OutMessage msg ) throws IOException {
+        isTrue("open", !closed);
+        doOperation(new Operation<Void>() {
+            @Override
+            public Void execute() throws IOException {
+                setActiveState(new ActiveState(msg));
+                msg.prepare();
+                msg.pipe(_out);
+                return null;
             }
-            else {
-                // this could cause issues since we're reading data off the wire
-                throw new IllegalStateException( "DBPort.go called and expecting a response while processing another response" );
-            }
-        }
+        });
+    }
 
-        _calls.incrementAndGet();
-
-        if ( _socket == null )
-            _open();
-        
-        if ( _out == null )
-            throw new IllegalStateException( "_out shouldn't be null" );
+    synchronized <T> T doOperation(Operation<T> operation) throws IOException {
+        isTrue("open", !closed);
+        usageCount++;
 
         try {
-            msg.prepare();
-            _activeState = new ActiveState(msg);
-            msg.pipe( _out );
-
-            if ( _pool != null )
-                _pool._everWorked = true;
-            
-            if ( coll == null && ! forceResponse )
-                return null;
-            
-            _processingResponse = true;
-            return new Response( _sa , coll , _in , (decoder == null ? _decoder : decoder) );
+            return operation.execute();
         }
         catch ( IOException ioe ){
             close();
             throw ioe;
         }
         finally {
+            lastUsedAt = System.currentTimeMillis();
             _activeState = null;
-            _processingResponse = false;
         }
     }
 
+    void setActiveState(ActiveState activeState) {
+        isTrue("open", !closed);
+        _activeState = activeState;
+    }
+
     synchronized CommandResult getLastError( DB db , WriteConcern concern ) throws IOException{
-        DBApiLayer dbAL = (DBApiLayer) db;
-        return runCommand( dbAL, concern.getCommand() );
+        isTrue("open", !closed);
+        return runCommand(db, concern.getCommand() );
     }
 
     synchronized private Response findOne( DB db , String coll , DBObject q ) throws IOException {
-        OutMessage msg = OutMessage.query( db.getCollection(coll) , 0 , 0 , -1 , q , null );
+        OutMessage msg = OutMessage.query( db.getCollection(coll) , 0 , 0 , -1 , q , null, Bytes.MAX_OBJECT_SIZE );
         try {
-            Response res = go( msg , db.getCollection( coll ) , null );
-            return res;
+            return call(msg, db.getCollection(coll), null);
         } finally {
             msg.doneWithMessage();
         }
     }
 
     synchronized CommandResult runCommand( DB db , DBObject cmd ) throws IOException {
+        isTrue("open", !closed);
         Response res = findOne(db, "$cmd", cmd);
         return convertToCommandResult(cmd, res);
     }
@@ -187,27 +214,32 @@ public class DBPort {
     }
 
     synchronized CommandResult tryGetLastError( DB db , long last, WriteConcern concern) throws IOException {
-        if ( last != _calls.get() )
+        isTrue("open", !closed);
+        if ( last != usageCount )
             return null;
         
         return getLastError(db, concern);
+    }
+
+    OutputStream getOutputStream() throws IOException {
+        isTrue("open", !closed);
+        return _out;
+    }
+
+    InputStream getInputStream() throws IOException {
+        isTrue("open", !closed);
+        return _in;
     }
 
     /**
      * makes sure that a connection to the server has been opened
      * @throws IOException
      */
-    public synchronized void ensureOpen()
-        throws IOException {
-        
+    public synchronized void ensureOpen() throws IOException {
+
         if ( _socket != null )
             return;
-        
-        _open();
-    }
 
-    void _open() throws IOException {
-        
         long sleepTime = 100;
 
         long maxAutoConnectRetryTime = CONN_RETRY_TIME_MS;
@@ -220,7 +252,7 @@ public class DBPort {
         do {
             try {
                 _socket = _options.socketFactory.createSocket();
-                _socket.connect( _addr , _options.connectTimeout );
+                _socket.connect( _addr.getSocketAddress() , _options.connectTimeout );
 
                 _socket.setTcpNoDelay( ! USE_NAGLE );
                 _socket.setKeepAlive( _options.socketKeepAlive );
@@ -232,7 +264,7 @@ public class DBPort {
             catch ( IOException e ){
                 close();
 
-                if (!_options.autoConnectRetry || (_pool != null && !_pool._everWorked))
+                if (!_options.autoConnectRetry || (provider != null && !provider.hasWorked()))
                     throw e;
 
                 long waitSoFar = System.currentTimeMillis() - start;
@@ -253,7 +285,7 @@ public class DBPort {
 
     @Override
     public int hashCode(){
-        return _hashCode;
+        return _addr.hashCode();
     }
     
     /**
@@ -276,24 +308,30 @@ public class DBPort {
         return "{DBPort  " + host() + "}";
     }
     
-    @Override
-    protected void finalize() throws Throwable{
-        super.finalize();
-        close();
-    }
-
     ActiveState getActiveState() {
+        isTrue("open", !closed);
         return _activeState;
     }
 
     int getLocalPort() {
+        isTrue("open", !closed);
         return _socket != null ? _socket.getLocalPort() : -1;
     }
 
+    ServerAddress getAddress() {
+        return _addr;
+    }
+
+    @Override
+    public boolean isClosed() {
+        return closed;
+    }
     /**
      * closes the underlying connection and streams
      */
-    protected void close(){
+    @Override
+    public void close(){
+        closed = true;
         authenticatedDatabases.clear();
                 
         if ( _socket != null ){
@@ -316,6 +354,10 @@ public class DBPort {
             authenticator = new NativeAuthenticator(mongo, credentials);
         } else if (credentials.getMechanism().equals(MongoCredential.GSSAPI_MECHANISM)) {
             authenticator = new GSSAPIAuthenticator(mongo, credentials);
+        } else if (credentials.getMechanism().equals(MongoCredential.PLAIN_MECHANISM)) {
+            authenticator = new PlainAuthenticator(mongo, credentials);
+        } else if (credentials.getMechanism().equals(MongoCredential.MONGODB_X509_MECHANISM)) {
+            authenticator = new X509Authenticator(mongo, credentials);
         } else {
             throw new IllegalArgumentException("Unsupported authentication protocol: " + credentials.getMechanism());
         }
@@ -339,97 +381,129 @@ public class DBPort {
      * @return the pool that this port belongs to.
      */
     public DBPortPool getPool() {
-        return _pool;
+        return null;
+    }
+
+    public long getUsageCount() {
+        return usageCount;
+    }
+
+    PooledConnectionProvider getProvider() {
+        return provider;
+    }
+
+    Set<String> getAuthenticatedDatabases() {
+        return Collections.unmodifiableSet(authenticatedDatabases);
     }
 
     private static Logger _rootLogger = Logger.getLogger( "com.mongodb.port" );
 
-    final int _hashCode;
-    final ServerAddress _sa;
-    final InetSocketAddress _addr;
-    final DBPortPool _pool;
-    final MongoOptions _options;
-    final Logger _logger;
-    final DBDecoder _decoder;
+    private volatile boolean closed;
+    private final long openedAt;
+    private volatile long lastUsedAt;
+    private final int generation;
+    private final PooledConnectionProvider provider;
+
+    private final ServerAddress _sa;
+    private final ServerAddress _addr;
+    private final MongoOptions _options;
+    private final Logger _logger;
+    private final DBDecoder _decoder;
     
     private volatile Socket _socket;
     private volatile InputStream _in;
     private volatile OutputStream _out;
 
-    private volatile boolean _processingResponse;
-
     // needs synchronization to ensure that modifications are published.
-    final Set<String> authenticatedDatabases = Collections.synchronizedSet(new HashSet<String>());
+    private final Set<String> authenticatedDatabases = Collections.synchronizedSet(new HashSet<String>());
 
-    volatile int _lastThread;
-    final AtomicLong _calls = new AtomicLong();
+    private volatile long usageCount;
     private volatile ActiveState _activeState;
-    private volatile Boolean useCRAMAuthenticationProtocol;
 
     class ActiveState {
-       ActiveState(final OutMessage outMessage) {
-           this.outMessage = outMessage;
-           this.startTime = System.nanoTime();
-           this.threadName = Thread.currentThread().getName();
-       }
-       final OutMessage outMessage;
-       final long startTime;
-       final String threadName;
+        ActiveState(final OutMessage outMessage) {
+            namespace = outMessage.getNamespace();
+            opCode = outMessage.getOpCode();
+            query = outMessage.getQuery();
+            numDocuments = outMessage.getNumDocuments();
+            this.startTime = System.nanoTime();
+            this.threadName = Thread.currentThread().getName();
+        }
+
+        String getNamespace() {
+            return namespace;
+        }
+
+        OutMessage.OpCode getOpCode() {
+            return opCode;
+        }
+
+        DBObject getQuery() {
+            return query;
+        }
+
+        int getNumDocuments() {
+            return numDocuments;
+        }
+
+        long getStartTime() {
+            return startTime;
+        }
+
+        String getThreadName() {
+            return threadName;
+        }
+
+        private final String namespace;
+        private final OutMessage.OpCode opCode;
+        private final DBObject query;
+        private int numDocuments;
+        private final long startTime;
+        private final String threadName;
     }
 
-    class GenericSaslAuthenticator extends SaslAuthenticator {
-        static final String CRAM_MD5 = "CRAM-MD5";
+    class PlainAuthenticator extends SaslAuthenticator {
+        private static final String MECHANISM = MongoCredential.PLAIN_MECHANISM;
+        private static final String DEFAULT_PROTOCOL = "mongodb";
 
-        private final String mechanism;
-
-        GenericSaslAuthenticator(final Mongo mongo, MongoCredential credentials, String mechanism) {
+        PlainAuthenticator(final Mongo mongo, final MongoCredential credentials) {
             super(mongo, credentials);
-            this.mechanism = mechanism;
         }
 
         @Override
         protected SaslClient createSaslClient() {
             try {
-                return Sasl.createSaslClient(new String[]{mechanism},
-                        credential.getUserName(), MONGODB_PROTOCOL,
-                        serverAddress().getHost(), null, new CredentialsHandlingCallbackHandler());
+                return Sasl.createSaslClient(new String[]{MongoCredential.PLAIN_MECHANISM}, credential.getUserName(),
+                                             DEFAULT_PROTOCOL, serverAddress().getHost(), null, new CallbackHandler() {
+                    @Override
+                    public void handle(final Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+                        for (Callback callback : callbacks) {
+                            if (callback instanceof PasswordCallback) {
+                                ((PasswordCallback) callback).setPassword(credential.getPassword());
+                            }
+                            else if (callback instanceof NameCallback) {
+                                ((NameCallback) callback).setName(credential.getUserName());
+                            }
+                        }
+                    }
+                });
             } catch (SaslException e) {
                 throw new MongoException("Exception initializing SASL client", e);
             }
         }
 
         @Override
-        protected DB getDatabase() {
-            return mongo.getDB(credential.getSource());
-        }
-
-        @Override
         public String getMechanismName() {
-            return mechanism;
-        }
-
-        class CredentialsHandlingCallbackHandler implements CallbackHandler {
-
-            public void handle(final Callback[] callbacks) throws IOException, UnsupportedCallbackException {
-                for (Callback callback : callbacks) {
-                    if (callback instanceof NameCallback) {
-                        NameCallback nameCallback = (NameCallback) callback;
-                        nameCallback.setName(credential.getUserName());
-                    }
-                    if (callback instanceof PasswordCallback) {
-                        PasswordCallback passwordCallback = (PasswordCallback) callback;
-                        String hashedPassword = new String(NativeAuthenticationHelper.createHash(
-                                credential.getUserName(), credential.getPassword()));
-                        passwordCallback.setPassword(hashedPassword.toCharArray());
-                    }
-                }
-            }
+            return MECHANISM;
         }
     }
 
     class GSSAPIAuthenticator extends SaslAuthenticator {
         public static final String GSSAPI_OID = "1.2.840.113554.1.2.2";
         public static final String GSSAPI_MECHANISM = MongoCredential.GSSAPI_MECHANISM;
+        public static final String SERVICE_NAME_KEY = "SERVICE_NAME";
+        public static final String SERVICE_NAME_DEFAULT_VALUE = "mongodb";
+        public static final String CANONICALIZE_HOST_NAME_KEY = "CANONICALIZE_HOST_NAME";
 
         GSSAPIAuthenticator(final Mongo mongo, final MongoCredential credentials) {
             super(mongo, credentials);
@@ -445,23 +519,27 @@ public class DBPort {
                 Map<String, Object> props = new HashMap<String, Object>();
                 props.put(Sasl.CREDENTIALS, getGSSCredential(credential.getUserName()));
 
-                return Sasl.createSaslClient(new String[]{GSSAPI_MECHANISM}, credential.getUserName(), MONGODB_PROTOCOL,
-                        serverAddress().getHost(), props, null);
+                return Sasl.createSaslClient(new String[]{GSSAPI_MECHANISM}, credential.getUserName(),
+                                             credential.getMechanismProperty(SERVICE_NAME_KEY, SERVICE_NAME_DEFAULT_VALUE),
+                                             getHostName(), props, null);
             } catch (SaslException e) {
                 throw new MongoException("Exception initializing SASL client", e);
             } catch (GSSException e) {
                 throw new MongoException("Exception initializing GSSAPI credentials", e);
+            } catch (UnknownHostException e) {
+                throw new MongoException("Unknown host " + serverAddress().getHost(), e);
             }
-        }
-
-        @Override
-        protected DB getDatabase() {
-            return mongo.getDB(credential.getSource());
         }
 
         @Override
         public String getMechanismName() {
             return "GSSAPI";
+        }
+
+        private String getHostName() throws UnknownHostException {
+            return credential.getMechanismProperty(CANONICALIZE_HOST_NAME_KEY, false)
+                   ? InetAddress.getByName(serverAddress().getHost()).getCanonicalHostName()
+                   : serverAddress().getHost();
         }
 
         private GSSCredential getGSSCredential(String userName) throws GSSException {
@@ -474,7 +552,6 @@ public class DBPort {
     }
 
     abstract class SaslAuthenticator extends Authenticator {
-        public static final String MONGODB_PROTOCOL = "mongodb";
 
         SaslAuthenticator(final Mongo mongo, MongoCredential credentials) {
             super(mongo, credentials);
@@ -513,7 +590,9 @@ public class DBPort {
 
         protected abstract SaslClient createSaslClient();
 
-        protected abstract DB getDatabase();
+        protected DB getDatabase() {
+            return mongo.getDB(credential.getSource());
+        }
 
         private CommandResult sendSaslStart(final byte[] outToken) throws IOException {
             DBObject cmd = new BasicDBObject("saslStart", 1).
@@ -530,6 +609,30 @@ public class DBPort {
         }
 
         public abstract String getMechanismName();
+    }
+
+    class X509Authenticator extends Authenticator {
+        X509Authenticator(final Mongo mongo, final MongoCredential credential) {
+            super(mongo, credential);
+        }
+
+        @Override
+        CommandResult authenticate() {
+            try {
+                DB db = mongo.getDB(credential.getSource());
+                CommandResult res = runCommand(db, getAuthCommand());
+                res.throwOnError();
+                return res;
+            } catch (IOException e) {
+                throw new MongoException.Network("IOException authenticating the connection", e);
+            }
+        }
+
+        private DBObject getAuthCommand() {
+            return new BasicDBObject("authenticate", 1)
+                   .append("user", credential.getUserName())
+                   .append("mechanism", MongoCredential.MONGODB_X509_MECHANISM);
+        }
     }
 
     class NativeAuthenticator extends Authenticator {
@@ -564,5 +667,9 @@ public class DBPort {
         }
 
         abstract CommandResult authenticate();
+    }
+
+    interface Operation<T> {
+        T execute() throws IOException;
     }
 }

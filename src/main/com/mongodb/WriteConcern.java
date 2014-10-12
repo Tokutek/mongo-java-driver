@@ -1,20 +1,20 @@
-// WriteConcern.java
-
-/**
- *      Copyright (C) 2008-2011 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// WriteConcern.java
 
 package com.mongodb;
 
@@ -25,11 +25,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * <p>WriteConcern control the acknowledgment of write operations with various options.
+ * <p>Controls the acknowledgment of write operations with various options.
  * <p>
  * <b>w</b>
  * <ul>
- *  <li>-1 = Don't even report network errors </li>
  *  <li> 0 = Don't wait for acknowledgement from the server </li>
  *  <li> 1 = Wait for acknowledgement, but don't wait for secondaries to replicate</li>
  *  <li> 2+= Wait for one or more secondaries to also acknowledge </li>
@@ -43,10 +42,16 @@ import java.util.Map;
  * <p>
  * Other options:
  * <ul>
- *   <li><b>j</b>: wait for group commit to journal</li>
- *   <li><b>fsync</b>: force fsync to disk</li>
+ *   <li><b>j</b>: If true block until write operations have been committed to the journal. Cannot be used in combination with
+ *   {@code fsync}. Prior to MongoDB 2.6 this option was ignored if the server was running without journaling.  Starting with MongoDB 2.6
+ *   write operations will fail with an exception if this option is used when the server is running without journaling.</li>
+ *   <li><b>fsync</b>: If true and the server is running without journaling, blocks until the server has synced all data files to disk.
+ *   If the server is running with journaling, this acts the same as the {@code j} option, blocking until write operations have been
+ *   committed to the journal. Cannot be used in combination with {@code j}. In almost all cases the  {@code j} flag should be used in
+ *   preference to this one.</li>
  * </ul>
- * @dochub databases
+ *
+ * @mongodb.driver.manual core/write-concern Write Concern
  */
 public class WriteConcern implements Serializable {
 
@@ -54,7 +59,13 @@ public class WriteConcern implements Serializable {
 
     /**
      * No exceptions are raised, even for network issues.
+     *
+     * @deprecated There is no replacement for this write concern.  The closest would be to use WriteConcern#UNACKNOWLEDGED,
+     * then catch and ignore any exceptions of type MongoSocketException.
+     * @see com.mongodb.WriteConcern#UNACKNOWLEDGED
+     * @see com.mongodb.MongoSocketException
      */
+    @Deprecated
     public final static WriteConcern ERRORS_IGNORED = new WriteConcern(-1);
 
     /**
@@ -93,6 +104,7 @@ public class WriteConcern implements Serializable {
      * This field has been superseded by {@code WriteConcern.ERRORS_IGNORED}, and may be deprecated in a future release.
      * @see WriteConcern#ERRORS_IGNORED
      */
+    @Deprecated
     public final static WriteConcern NONE = new WriteConcern(-1);
 
     /**
@@ -194,7 +206,6 @@ public class WriteConcern implements Serializable {
      * <p>Specifies the number of servers to wait for on the write operation, and exception raising behavior </p>
      *	<p> w represents the number of servers:
      * 		<ul>
-     * 			<li>{@code w=-1} None, no checking is done</li>
      * 			<li>{@code w=0} None, network socket errors raised</li>
      * 			<li>{@code w=1} Checks server for errors as well as network socket errors raised</li>
      * 			<li>{@code w>1} Checks servers (w) for errors as well as network socket errors raised</li>
@@ -213,7 +224,6 @@ public class WriteConcern implements Serializable {
      * <p>Specifies the number of servers to wait for on the write operation, and exception raising behavior </p>
      *	<p> w represents the number of servers:
      * 		<ul>
-     * 			<li>{@code w=-1} None, no checking is done</li>
      * 			<li>{@code w=0} None, network socket errors raised</li>
      * 			<li>{@code w=1} Checks server for errors as well as network socket errors raised</li>
      * 			<li>{@code w>1} Checks servers (w) for errors as well as network socket errors raised</li>
@@ -233,7 +243,6 @@ public class WriteConcern implements Serializable {
      * <p>Specifies the number of servers to wait for on the write operation, and exception raising behavior </p>
      *	<p> w represents the number of servers:
      * 		<ul>
-     * 			<li>{@code w=-1} None, no checking is done</li>
      * 			<li>{@code w=0} None, network socket errors raised</li>
      * 			<li>{@code w=1} Checks server for errors as well as network socket errors raised</li>
      * 			<li>{@code w>1} Checks servers (w) for errors as well as network socket errors raised</li>
@@ -243,14 +252,14 @@ public class WriteConcern implements Serializable {
      * @param wtimeout timeout for write operation
      * @param fsync whether or not to fsync
      * @param j whether writes should wait for a journaling group commit
-     * @param continueOnInsertError if batch inserts should continue after the first error
+     * @param continueOnError if batch writes should continue after the first error
      */
-    public WriteConcern( int w , int wtimeout , boolean fsync , boolean j, boolean continueOnInsertError) {
+    public WriteConcern( int w , int wtimeout , boolean fsync , boolean j, boolean continueOnError) {
         _w = w;
         _wtimeout = wtimeout;
         _fsync = fsync;
         _j = j;
-        _continueOnErrorForInsert = continueOnInsertError;
+        _continueOnError = continueOnError;
     }
 
     /**
@@ -258,7 +267,6 @@ public class WriteConcern implements Serializable {
      * <p>Specifies the number of servers to wait for on the write operation, and exception raising behavior </p>
      *	<p> w represents the number of servers:
      * 		<ul>
-     * 			<li>{@code w=-1} None, no checking is done</li>
      * 			<li>{@code w=0} None, network socket errors raised</li>
      * 			<li>{@code w=1} Checks server for errors as well as network socket errors raised</li>
      * 			<li>{@code w>1} Checks servers (w) for errors as well as network socket errors raised</li>
@@ -278,7 +286,6 @@ public class WriteConcern implements Serializable {
      * <p>Specifies the number of servers to wait for on the write operation, and exception raising behavior </p>
      *	<p> w represents the number of servers:
      * 		<ul>
-     * 			<li>{@code w=-1} None, no checking is done</li>
      * 			<li>{@code w=0} None, network socket errors raised</li>
      * 			<li>{@code w=1} Checks server for errors as well as network socket errors raised</li>
      * 			<li>{@code w>1} Checks servers (w) for errors as well as network socket errors raised</li>
@@ -288,10 +295,10 @@ public class WriteConcern implements Serializable {
      * @param wtimeout timeout for write operation
      * @param fsync whether or not to fsync
      * @param j whether writes should wait for a journaling group commit
-     * @param continueOnInsertError if batch inserts should continue after the first error
+     * @param continueOnError if batched writes should continue after the first error
      * @return
      */
-    public WriteConcern( String w , int wtimeout , boolean fsync, boolean j, boolean continueOnInsertError ){
+    public WriteConcern( String w , int wtimeout , boolean fsync, boolean j, boolean continueOnError ){
         if (w == null) {
             throw new IllegalArgumentException("w can not be null");
         }
@@ -300,7 +307,7 @@ public class WriteConcern implements Serializable {
         _wtimeout = wtimeout;
         _fsync = fsync;
         _j = j;
-        _continueOnErrorForInsert = continueOnInsertError;
+        _continueOnError = continueOnError;
     }
 
     /**
@@ -309,23 +316,60 @@ public class WriteConcern implements Serializable {
      * @return getlasterror command, even if <code>w <= 0</code>
      */
     public BasicDBObject getCommand() {
-        BasicDBObject _command = new BasicDBObject( "getlasterror" , 1 );
+        BasicDBObject command = new BasicDBObject("getlasterror", 1);
 
-        if (_w instanceof Integer && ((Integer) _w > 1) || (_w instanceof String)){
-            _command.put( "w" , _w );
+        if (_w instanceof Integer && ((Integer) _w > 1) || (_w instanceof String)) {
+            command.put("w", _w);
         }
 
+        addWTimeout(command);
+        addFSync(command);
+        addJ(command);
+
+        return command;
+    }
+
+    /**
+     * Use the server default only if w == 1 and everything else is the default value.
+     * @mongodb.driver.manual /reference/replica-configuration/#local.system.replset.settings.getLastErrorDefaults getLastErrorDefaults
+     */
+    boolean useServerDefault() {
+        return _w.equals(1) && _wtimeout == 0 && !_fsync && !_j;
+    }
+
+    /**
+     * Gets the write concern as a document.
+     *
+     * @return the write concern as a document
+     */
+    BasicDBObject asDBObject() {
+        BasicDBObject document = new BasicDBObject();
+
+        document.put("w", _w);
+
+        addWTimeout(document);
+        addFSync(document);
+        addJ(document);
+
+        return document;
+    }
+
+    private void addJ(final BasicDBObject document) {
+        if (_j) {
+            document.put("j", true);
+        }
+    }
+
+    private void addFSync(final BasicDBObject document) {
+        if (_fsync) {
+            document.put("fsync", true);
+        }
+    }
+
+    private void addWTimeout(final BasicDBObject document) {
         if (_wtimeout > 0) {
-            _command.put( "wtimeout" , _wtimeout );
+            document.put("wtimeout", _wtimeout);
         }
-
-        if ( _fsync )
-            _command.put( "fsync" , true );
-
-        if ( _j )
-            _command.put( "j", true );
-
-        return _command;
     }
 
     /**
@@ -335,6 +379,7 @@ public class WriteConcern implements Serializable {
      * @deprecated construct a new instance instead.  This method will be removed in a future major release, as instances of this class
      * should really be immutable.
      */
+    @Deprecated
     public void setWObject(Object w) {
         if ( ! (w instanceof Integer) && ! (w instanceof String) )
             throw new IllegalArgumentException("The w parameter must be an int or a String");
@@ -390,9 +435,12 @@ public class WriteConcern implements Serializable {
     }
 
     /**
-     * Returns whether network error may be raised (w >= 0)
-     * @return
+     * Returns whether network error may be raised
+     * @return true if network errors should throw exceptions
+     * @deprecated There is no replacement for this method.
+     * @see com.mongodb.WriteConcern#ERRORS_IGNORED
      */
+    @Deprecated
     public boolean raiseNetworkErrors(){
         if (_w instanceof Integer)
             return (Integer) _w >= 0;
@@ -438,7 +486,7 @@ public class WriteConcern implements Serializable {
 
     @Override
     public String toString() {
-        return "WriteConcern " + getCommand() + " / (Continue Inserting on Errors? " + getContinueOnErrorForInsert() + ")";
+        return "WriteConcern " + getCommand() + " / (Continue on error? " + getContinueOnErrorForInsert() + ")";
     }
 
     @Override
@@ -448,7 +496,7 @@ public class WriteConcern implements Serializable {
 
         WriteConcern that = (WriteConcern) o;
 
-        if (_continueOnErrorForInsert != that._continueOnErrorForInsert) return false;
+        if (_continueOnError != that._continueOnError) return false;
         if (_fsync != that._fsync) return false;
         if (_j != that._j) return false;
         if (_wtimeout != that._wtimeout) return false;
@@ -463,7 +511,7 @@ public class WriteConcern implements Serializable {
         result = 31 * result + _wtimeout;
         result = 31 * result + (_fsync ? 1 : 0);
         result = 31 * result + (_j ? 1 : 0);
-        result = 31 * result + (_continueOnErrorForInsert ? 1 : 0);
+        result = 31 * result + (_continueOnError ? 1 : 0);
         return result;
     }
 
@@ -479,25 +527,50 @@ public class WriteConcern implements Serializable {
      * Toggles the "continue inserts on error" mode. This only applies to server side errors.
      * If there is a document which does not validate in the client, an exception will still
      * be thrown in the client.
-     * This will return a *NEW INSTANCE* of WriteConcern with your preferred continueOnInsert value
+     * This will return a new instance of WriteConcern with your preferred continueOnInsert value
      *
-     * @param continueOnErrorForInsert
+     * @param continueOnError
      */
-    public WriteConcern continueOnErrorForInsert(boolean continueOnErrorForInsert) {
+    public WriteConcern continueOnError(boolean continueOnError) {
         if ( _w instanceof Integer )
-            return new WriteConcern((Integer) _w, _wtimeout, _fsync, _j, continueOnErrorForInsert);
+            return new WriteConcern((Integer) _w, _wtimeout, _fsync, _j, continueOnError);
         else if ( _w instanceof String )
-            return new WriteConcern((String) _w, _wtimeout, _fsync, _j, continueOnErrorForInsert);
+            return new WriteConcern((String) _w, _wtimeout, _fsync, _j, continueOnError);
         else
             throw new IllegalStateException("The w parameter must be an int or a String");
     }
 
     /**
      * Gets the "continue inserts on error" mode
-     * @return
+     *
+     * @return the continue on error mode
      */
+    public boolean getContinueOnError() {
+        return _continueOnError;
+    }
+
+    /**
+     * Toggles the "continue inserts on error" mode. This only applies to server side errors.
+     * If there is a document which does not validate in the client, an exception will still
+     * be thrown in the client.
+     * This will return a new instance of WriteConcern with your preferred continueOnInsert value
+     *
+     * @param continueOnErrorForInsert
+     * @deprecated Use continueOnError instead
+     */
+    @Deprecated
+    public WriteConcern continueOnErrorForInsert(boolean continueOnErrorForInsert) {
+        return continueOnError(continueOnErrorForInsert);
+    }
+
+    /**
+     * Gets the "continue inserts on error" mode
+     * @return
+     * @deprecated Use getContinueOnError instead
+     */
+    @Deprecated
     public boolean getContinueOnErrorForInsert() {
-        return _continueOnErrorForInsert;
+        return getContinueOnError();
     }
 
     /**
@@ -517,7 +590,7 @@ public class WriteConcern implements Serializable {
     final int _wtimeout;
     final boolean _fsync;
     final boolean _j;
-    final boolean _continueOnErrorForInsert ;
+    final boolean _continueOnError;
 
     public static class Majority extends WriteConcern {
 

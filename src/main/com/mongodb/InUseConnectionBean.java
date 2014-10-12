@@ -1,25 +1,30 @@
-/**
- * Copyright (c) 2008 - 2011 10gen, Inc. <http://10gen.com>
- * <p/>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p/>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p/>
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.mongodb;
 
 import java.util.concurrent.TimeUnit;
 
 /**
  * This class is NOT part of the public API.  Be prepared for non-binary compatible changes in minor releases.
+ *
+ * @deprecated This class will be removed in 3.x versions of the driver,
+ *             so please remove it from your compile time dependencies.
  */
+@Deprecated
 public class InUseConnectionBean {
 
     InUseConnectionBean(final DBPort port, long currentNanoTime) {
@@ -33,12 +38,12 @@ public class InUseConnectionBean {
             numDocuments = 0;
         }
         else {
-            durationMS = TimeUnit.NANOSECONDS.toMillis(currentNanoTime - activeState.startTime);
-            namespace = activeState.outMessage.getNamespace();
-            opCode = activeState.outMessage.getOpCode();
-            query = activeState.outMessage.getQuery() != null ? activeState.outMessage.getQuery().toString() : null;
-            threadName = activeState.threadName;
-            numDocuments = activeState.outMessage.getNumDocuments();
+            durationMS = TimeUnit.NANOSECONDS.toMillis(currentNanoTime - activeState.getStartTime());
+            namespace = activeState.getNamespace();
+            opCode = activeState.getOpCode();
+            query = activeState.getQuery().toString();
+            threadName = activeState.getThreadName();
+            numDocuments = activeState.getNumDocuments();
         }
         localPort = port.getLocalPort();
     }

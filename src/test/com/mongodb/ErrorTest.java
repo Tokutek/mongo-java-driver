@@ -1,105 +1,78 @@
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.mongodb;
 
-import org.testng.annotations.*;
-import org.testng.SkipException;
+import com.mongodb.util.TestCase;
+import org.junit.Test;
 
-import com.mongodb.util.*;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assume.assumeFalse;
 
 /**
- *
+ *  Skipping for sharded clusters, which don't properly support these commands
  */
 public class ErrorTest extends TestCase {
+    @Test
+    public void testLastError() {
+        assumeFalse(isSharded(getMongoClient()));
 
-    DB _db;
+        getDatabase().resetError();
+        assertNull(getDatabase().getLastError().get("err"));
 
-    @BeforeClass
-    public void setUp() throws Exception{
-	cleanupDB = "com_mongodb_unittest_ErrorTest";
-        _db = cleanupMongo.getDB(cleanupDB);
+        getDatabase().forceError();
+
+        assertNotNull(getDatabase().getLastError().get("err"));
+
+        getDatabase().resetError();
+        assertNull(getDatabase().getLastError().get("err"));
     }
 
     @Test
-    public void testLastError()
-        throws MongoException {
+    public void testLastErrorWithConcern() {
+        assumeFalse(isSharded(getMongoClient()));
 
-        _db.resetError();
-        assert(_db.getLastError().get("err") == null);
-
-        _db.forceError();
-
-        assert(_db.getLastError().get("err") != null);
-
-        _db.resetError();
-        assert(_db.getLastError().get("err") == null);
+        getDatabase().resetError();
+        CommandResult cr = getDatabase().getLastError(WriteConcern.FSYNC_SAFE);
+        assertNull(cr.get("err"));
     }
 
     @Test
-    public void testLastErrorWithConcern()
-        throws MongoException {
-        // getLastError's return object is different
-        if (_db.getMongo().isMongosConnection()) {
-            throw new SkipException("test disabled on mongos");
-        }
+    public void testPrevError() {
+        assumeFalse(isSharded(getMongoClient()));
 
-        _db.resetError();
-        CommandResult cr = _db.getLastError(WriteConcern.FSYNC_SAFE);
-        assert(cr.get("err") == null);
-        assert(cr.containsField("fsyncFiles") || cr.containsField("waited"));
-    }
+        getDatabase().resetError();
 
-    @Test
-    public void testLastErrorWithConcernAndW()
-        throws MongoException {
-        if ( /* TODO: running with slaves */ false ){
-            _db.resetError();
-            CommandResult cr = _db.getLastError(WriteConcern.REPLICAS_SAFE);
-            assert(cr.get("err") == null);
-            assert(cr.containsField("wtime"));
-        }
-    }
+        assertNull(getDatabase().getLastError().get("err"));
+        assertNull(getDatabase().getPreviousError().get("err"));
 
-    @Test
-    public void testPrevError()
-        throws MongoException {
-        // getPrevError doesn't work on mongos
-        if (_db.getMongo().isMongosConnection()) {
-            throw new SkipException("test disabled on mongos");
-        }
+        getDatabase().forceError();
 
-        _db.resetError();
-        
-        assert(_db.getLastError().get("err") == null);
-        assert(_db.getPreviousError().get("err") == null);
+        assertNotNull(getDatabase().getLastError().get("err"));
+        assertNotNull(getDatabase().getPreviousError().get("err"));
 
-        _db.forceError();
+        getDatabase().getCollection("misc").insert(new BasicDBObject("foo", 1), WriteConcern.UNACKNOWLEDGED);
 
-        assert(_db.getLastError().get("err") != null);
-        assert(_db.getPreviousError().get("err") != null);
+        assertNull(getDatabase().getLastError().get("err"));
+        assertNotNull(getDatabase().getPreviousError().get("err"));
 
-        _db.getCollection("misc").insert(new BasicDBObject("foo", 1));
+        getDatabase().resetError();
 
-        assert(_db.getLastError().get("err") == null);
-        assert(_db.getPreviousError().get("err") != null);
-
-        _db.resetError();
-
-        assert(_db.getLastError().get("err") == null);
-        assert(_db.getPreviousError().get("err") == null);
+        assertNull(getDatabase().getLastError().get("err"));
+        assertNull(getDatabase().getPreviousError().get("err"));
     }
 }

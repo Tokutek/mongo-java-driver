@@ -1,10 +1,10 @@
 /*
- * Copyright (c) 2008 - 2013 10gen, Inc. <http://10gen.com>
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -12,28 +12,27 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.mongodb;
 
 import com.mongodb.util.TestCase;
-import org.testng.annotations.Test;
-import org.testng.SkipException;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Set;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeFalse;
 public class DBPortTest extends TestCase {
     @Test
     @SuppressWarnings("deprecation")
     public void testAuthentication() throws IOException {
         Mongo m = new MongoClient();
-        if (m.isMongosConnection()) {
-            throw new SkipException("skipping auth tests on mongos, see Tokutek/mongo#77");
-        }
+        assumeFalse(m.isMongosConnection());
         DB db1 = m.getDB("DBPortTest1");
         DB db2 = m.getDB("DBPortTest2");
         db1.dropDatabase();
@@ -43,12 +42,12 @@ public class DBPortTest extends TestCase {
             db1.addUser("u1", "e".toCharArray());
             db2.addUser("u2", "e".toCharArray());
 
-            DBPort port = new DBPort(m.getAddress(), new DBPortPool(m.getAddress(), new MongoOptions()), new MongoOptions());
+            DBPort port = new DBPort(m.getAddress());
             port.checkAuth(m);
 
             Set<String> expected = new HashSet<String>();
 
-            assertEquals(expected, port.authenticatedDatabases);
+            assertEquals(expected, port.getAuthenticatedDatabases());
 
             m.getAuthority().getCredentialsStore().add(MongoCredential.createMongoCRCredential("u1", "DBPortTest1", "e".toCharArray()));
             m.getAuthority().getCredentialsStore().add(MongoCredential.createMongoCRCredential("u2", "DBPortTest2", "e".toCharArray()));
@@ -57,7 +56,7 @@ public class DBPortTest extends TestCase {
 
             expected.add("DBPortTest1");
             expected.add("DBPortTest2");
-            assertEquals(expected, port.authenticatedDatabases);
+            assertEquals(expected, port.getAuthenticatedDatabases());
 
             m.getAuthority().getCredentialsStore().add(MongoCredential.createMongoCRCredential("u2", "DBPortTest3", "e".toCharArray()));
 
@@ -74,19 +73,16 @@ public class DBPortTest extends TestCase {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     public void testOpenFailure() throws UnknownHostException {
         final MongoOptions options = new MongoOptions();
         options.autoConnectRetry = true;
         options.maxAutoConnectRetryTime = 350;
 
-        final DBPortPool portPool = new DBPortPool(new ServerAddress("localhost", 50051), options);
-        portPool._everWorked = true;
-
-        DBPort port = new DBPort(new ServerAddress("localhost", 50051), portPool, options);
         try {
-            port._open();
+            new DBPort(new ServerAddress("localhost", 50051));
             fail("Open should fail");
-        } catch (IOException e) {
+        } catch (MongoException.Network e) {
             // should get exception
         }
 

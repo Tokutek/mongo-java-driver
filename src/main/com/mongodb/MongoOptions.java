@@ -1,20 +1,20 @@
-// MongoOptions.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// MongoOptions.java
 
 package com.mongodb;
 
@@ -26,7 +26,10 @@ import javax.net.SocketFactory;
  *
  * @see MongoClientOptions
  * @see MongoClient
+ *
+ * @deprecated Replaced by {@link MongoClientOptions}.
  */
+@Deprecated
 public class MongoOptions {
 
     @Deprecated
@@ -56,6 +59,16 @@ public class MongoOptions {
         writeConcern = options.getWriteConcern();
         slaveOk = false; // default to false, as readPreference field will be responsible
         alwaysUseMBeans = options.isAlwaysUseMBeans();
+        minConnectionsPerHost = options.getMinConnectionsPerHost();
+        maxConnectionIdleTime = options.getMaxConnectionIdleTime();
+        maxConnectionLifeTime = options.getMaxConnectionLifeTime();
+        heartbeatFrequencyMS = options.getHeartbeatFrequency();
+        heartbeatConnectRetryFrequencyMS = options.getHeartbeatConnectRetryFrequency();
+        heartbeatConnectTimeoutMS = options.getHeartbeatConnectTimeout();
+        heartbeatReadTimeoutMS = options.getHeartbeatSocketTimeout();
+        heartbeatThreadCount = options.getHeartbeatThreadCount();
+        acceptableLatencyDifferenceMS = options.getAcceptableLatencyDifference();
+        requiredReplicaSetName = options.getRequiredReplicaSetName();
     }
 
     public void reset(){
@@ -81,6 +94,16 @@ public class MongoOptions {
         description = null;
         cursorFinalizerEnabled = true;
         alwaysUseMBeans = false;
+        minConnectionsPerHost = 0;
+        maxConnectionIdleTime = 0;
+        maxConnectionLifeTime = 0;
+        heartbeatFrequencyMS = Integer.parseInt(System.getProperty("com.mongodb.updaterIntervalMS", "5000"));
+        heartbeatConnectRetryFrequencyMS = Integer.parseInt(System.getProperty("com.mongodb.updaterIntervalNoMasterMS", "10"));
+        heartbeatConnectTimeoutMS = Integer.parseInt(System.getProperty("com.mongodb.updaterConnectTimeoutMS", "20000"));
+        heartbeatReadTimeoutMS = Integer.parseInt(System.getProperty("com.mongodb.updaterSocketTimeoutMS", "20000"));
+        heartbeatThreadCount = 0;
+        acceptableLatencyDifferenceMS = Integer.parseInt(System.getProperty("com.mongodb.slaveAcceptableLatencyMS", "15"));
+        requiredReplicaSetName = null;
     }
 
     public MongoOptions copy() {
@@ -107,6 +130,16 @@ public class MongoOptions {
         m.description = description;
         m.cursorFinalizerEnabled = cursorFinalizerEnabled;
         m.alwaysUseMBeans = alwaysUseMBeans;
+        m.minConnectionsPerHost = minConnectionsPerHost;
+        m.maxConnectionIdleTime = maxConnectionIdleTime;
+        m.maxConnectionLifeTime = maxConnectionLifeTime;
+        m.heartbeatFrequencyMS = heartbeatFrequencyMS;
+        m.heartbeatConnectRetryFrequencyMS = heartbeatConnectRetryFrequencyMS;
+        m.heartbeatConnectTimeoutMS = heartbeatConnectTimeoutMS;
+        m.heartbeatReadTimeoutMS = heartbeatReadTimeoutMS;
+        m.heartbeatThreadCount = heartbeatThreadCount;
+        m.acceptableLatencyDifferenceMS = acceptableLatencyDifferenceMS;
+        m.requiredReplicaSetName = requiredReplicaSetName;
         return m;
     }
 
@@ -127,38 +160,103 @@ public class MongoOptions {
 
     @Override
     public boolean equals(final Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         final MongoOptions options = (MongoOptions) o;
 
-        if (autoConnectRetry != options.autoConnectRetry) return false;
-        if (connectTimeout != options.connectTimeout) return false;
-        if (connectionsPerHost != options.connectionsPerHost) return false;
-        if (cursorFinalizerEnabled != options.cursorFinalizerEnabled) return false;
-        if (fsync != options.fsync) return false;
-        if (j != options.j) return false;
-        if (maxAutoConnectRetryTime != options.maxAutoConnectRetryTime) return false;
-        if (maxWaitTime != options.maxWaitTime) return false;
-        if (safe != options.safe) return false;
-        if (slaveOk != options.slaveOk) return false;
-        if (socketKeepAlive != options.socketKeepAlive) return false;
-        if (socketTimeout != options.socketTimeout) return false;
-        if (threadsAllowedToBlockForConnectionMultiplier != options.threadsAllowedToBlockForConnectionMultiplier)
+        if (acceptableLatencyDifferenceMS != options.acceptableLatencyDifferenceMS) {
             return false;
-        if (w != options.w) return false;
-        if (wtimeout != options.wtimeout) return false;
-        if (dbDecoderFactory != null ? !dbDecoderFactory.equals(options.dbDecoderFactory) : options.dbDecoderFactory != null)
+        }
+        if (alwaysUseMBeans != options.alwaysUseMBeans) {
             return false;
-        if (dbEncoderFactory != null ? !dbEncoderFactory.equals(options.dbEncoderFactory) : options.dbEncoderFactory != null)
+        }
+        if (autoConnectRetry != options.autoConnectRetry) {
             return false;
-        if (description != null ? !description.equals(options.description) : options.description != null) return false;
-        if (readPreference != null ? !readPreference.equals(options.readPreference) : options.readPreference != null)
+        }
+        if (connectTimeout != options.connectTimeout) {
             return false;
-        if (socketFactory != null ? !socketFactory.equals(options.socketFactory) : options.socketFactory != null)
+        }
+        if (connectionsPerHost != options.connectionsPerHost) {
             return false;
-        if (writeConcern != null ? !writeConcern.equals(options.writeConcern) : options.writeConcern != null)
+        }
+        if (cursorFinalizerEnabled != options.cursorFinalizerEnabled) {
             return false;
+        }
+        if (fsync != options.fsync) {
+            return false;
+        }
+        if (heartbeatConnectRetryFrequencyMS != options.heartbeatConnectRetryFrequencyMS) {
+            return false;
+        }
+        if (heartbeatConnectTimeoutMS != options.heartbeatConnectTimeoutMS) {
+            return false;
+        }
+        if (heartbeatFrequencyMS != options.heartbeatFrequencyMS) {
+            return false;
+        }
+        if (heartbeatReadTimeoutMS != options.heartbeatReadTimeoutMS) {
+            return false;
+        }
+        if (heartbeatThreadCount != options.heartbeatThreadCount) {
+            return false;
+        }
+        if (j != options.j) {
+            return false;
+        }
+        if (maxAutoConnectRetryTime != options.maxAutoConnectRetryTime) {
+            return false;
+        }
+        if (maxWaitTime != options.maxWaitTime) {
+            return false;
+        }
+        if (safe != options.safe) {
+            return false;
+        }
+        if (slaveOk != options.slaveOk) {
+            return false;
+        }
+        if (socketKeepAlive != options.socketKeepAlive) {
+            return false;
+        }
+        if (socketTimeout != options.socketTimeout) {
+            return false;
+        }
+        if (threadsAllowedToBlockForConnectionMultiplier != options.threadsAllowedToBlockForConnectionMultiplier) {
+            return false;
+        }
+        if (w != options.w) {
+            return false;
+        }
+        if (wtimeout != options.wtimeout) {
+            return false;
+        }
+        if (!dbDecoderFactory.equals(options.dbDecoderFactory)) {
+            return false;
+        }
+        if (!dbEncoderFactory.equals(options.dbEncoderFactory)) {
+            return false;
+        }
+        if (description != null ? !description.equals(options.description) : options.description != null) {
+            return false;
+        }
+        if (readPreference != null ? !readPreference.equals(options.readPreference) : options.readPreference != null) {
+            return false;
+        }
+        if (!socketFactory.equals(options.socketFactory)) {
+            return false;
+        }
+        if (writeConcern != null ? !writeConcern.equals(options.writeConcern) : options.writeConcern != null) {
+            return false;
+        }
+        if (requiredReplicaSetName != null ? !requiredReplicaSetName.equals(options.requiredReplicaSetName)
+                                           : options.requiredReplicaSetName != null) {
+            return false;
+        }
 
         return true;
     }
@@ -176,16 +274,24 @@ public class MongoOptions {
         result = 31 * result + (int) (maxAutoConnectRetryTime ^ (maxAutoConnectRetryTime >>> 32));
         result = 31 * result + (slaveOk ? 1 : 0);
         result = 31 * result + (readPreference != null ? readPreference.hashCode() : 0);
-        result = 31 * result + (dbDecoderFactory != null ? dbDecoderFactory.hashCode() : 0);
-        result = 31 * result + (dbEncoderFactory != null ? dbEncoderFactory.hashCode() : 0);
+        result = 31 * result + dbDecoderFactory.hashCode();
+        result = 31 * result + dbEncoderFactory.hashCode();
         result = 31 * result + (safe ? 1 : 0);
         result = 31 * result + w;
         result = 31 * result + wtimeout;
         result = 31 * result + (fsync ? 1 : 0);
         result = 31 * result + (j ? 1 : 0);
-        result = 31 * result + (socketFactory != null ? socketFactory.hashCode() : 0);
+        result = 31 * result + socketFactory.hashCode();
         result = 31 * result + (cursorFinalizerEnabled ? 1 : 0);
         result = 31 * result + (writeConcern != null ? writeConcern.hashCode() : 0);
+        result = 31 * result + (alwaysUseMBeans ? 1 : 0);
+        result = 31 * result + heartbeatFrequencyMS;
+        result = 31 * result + heartbeatConnectRetryFrequencyMS;
+        result = 31 * result + heartbeatConnectTimeoutMS;
+        result = 31 * result + heartbeatReadTimeoutMS;
+        result = 31 * result + acceptableLatencyDifferenceMS;
+        result = 31 * result + heartbeatThreadCount;
+        result = 31 * result + (requiredReplicaSetName != null ? requiredReplicaSetName.hashCode() : 0);
         return result;
     }
 
@@ -249,13 +355,17 @@ public class MongoOptions {
      *
      * Even if this flag is false, the driver already has mechanisms to automatically recreate broken connections and retry the read operations.
      * Default is false.
+     * @deprecated There is no replacement for this method.  Use the connectTimeout property to control connection timeout.
      */
+    @Deprecated
     public boolean autoConnectRetry;
 
     /**
      * The maximum amount of time in MS to spend retrying to open connection to the same server.
      * Default is 0, which means to use the default 15s if autoConnectRetry is on.
+     * @deprecated There is no replacement for this method.  Use the connectTimeout property to control connection timeout.
      */
+    @Deprecated
     public long maxAutoConnectRetryTime;
 
     /**
@@ -355,6 +465,19 @@ public class MongoOptions {
      * </p>
      */
     public boolean alwaysUseMBeans;
+
+    int minConnectionsPerHost;
+    int maxConnectionIdleTime;
+    int maxConnectionLifeTime;
+
+    int heartbeatFrequencyMS;
+    int heartbeatConnectRetryFrequencyMS;
+    int heartbeatConnectTimeoutMS;
+    int heartbeatReadTimeoutMS;
+    int acceptableLatencyDifferenceMS;
+    int heartbeatThreadCount;
+
+    String requiredReplicaSetName;
 
     /**
      * @return The description for <code>MongoClient</code> instances created with these options
@@ -472,7 +595,9 @@ public class MongoOptions {
     /**
      *
      * @return keep trying connection flag
+     * @deprecated There is no replacement for this method.  Use the connectTimeout property to control connection timeout.
      */
+    @Deprecated
     public synchronized boolean isAutoConnectRetry() {
         return autoConnectRetry;
     }
@@ -480,7 +605,9 @@ public class MongoOptions {
     /**
      *
      * @param retry sets keep trying connection flag
+     * @deprecated There is no replacement for this method.  Use the connectTimeout property to control connection timeout.
      */
+    @Deprecated
     public synchronized void setAutoConnectRetry(boolean retry) {
         autoConnectRetry = retry;
     }
@@ -488,7 +615,9 @@ public class MongoOptions {
     /**
      *
      * @return max time in MS to retrying open connection
+     * @deprecated There is no replacement for this method.  Use the connectTimeout property to control connection timeout.
      */
+    @Deprecated
     public synchronized long getMaxAutoConnectRetryTime() {
         return maxAutoConnectRetryTime;
     }
@@ -496,7 +625,9 @@ public class MongoOptions {
     /**
      *
      * @param retryTimeMS set max time in MS to retrying open connection
+     * @deprecated There is no replacement for this method.  Use the connectTimeout property to control connection timeout.
      */
+    @Deprecated
     public synchronized void setMaxAutoConnectRetryTime(long retryTimeMS) {
         maxAutoConnectRetryTime = retryTimeMS;
     }
@@ -687,6 +818,16 @@ public class MongoOptions {
         this.alwaysUseMBeans = alwaysUseMBeans;
     }
 
+    /**
+     * Gets the required replica set name that this client should be connecting to.
+     *
+     * @return the required replica set name, or null if none is required
+     * @since 2.12
+     */
+    public String getRequiredReplicaSetName() {
+        return requiredReplicaSetName;
+    }
+
     @Override
     public String toString() {
         return "MongoOptions{" +
@@ -712,6 +853,7 @@ public class MongoOptions {
                 ", cursorFinalizerEnabled=" + cursorFinalizerEnabled +
                 ", writeConcern=" + writeConcern +
                 ", alwaysUseMBeans=" + alwaysUseMBeans +
+                ", requiredReplicaSetName=" + requiredReplicaSetName +
                 '}';
     }
 }

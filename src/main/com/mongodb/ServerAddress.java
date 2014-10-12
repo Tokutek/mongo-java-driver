@@ -1,22 +1,24 @@
-// ServerAddress.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+// ServerAddress.java
+
 package com.mongodb;
+
+import org.bson.util.annotations.Immutable;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -25,8 +27,9 @@ import java.net.UnknownHostException;
 /**
  * mongo server address
  */
+@Immutable
 public class ServerAddress {
-    
+
     /**
      * Creates a ServerAddress with default host and port
      * @throws UnknownHostException
@@ -35,7 +38,7 @@ public class ServerAddress {
         throws UnknownHostException {
         this( defaultHost() , defaultPort() );
     }
-    
+
     /**
      * Creates a ServerAddress with default port
      * @param host hostname
@@ -59,18 +62,33 @@ public class ServerAddress {
         host = host.trim();
         if ( host.length() == 0 )
             host = defaultHost();
-        
-        int idx = host.indexOf( ":" );
-        if ( idx > 0 ){
-            if ( port != defaultPort() )
-                throw new IllegalArgumentException( "can't specify port in construct and via host" );
-            port = Integer.parseInt( host.substring( idx + 1 ) );
-            host = host.substring( 0 , idx ).trim();
+
+        if ( host.startsWith( "[" ) ) {
+            int idx = host.indexOf( "]" );
+            if( idx == -1 )
+                throw new IllegalArgumentException( "an IPV6 address must be encosed with '[' and ']'"
+                                                    + " according to RFC 2732." );
+
+            int portIdx = host.indexOf( "]:" );
+            if(portIdx != -1) {
+                if (port != defaultPort())
+                    throw new IllegalArgumentException( "can't specify port in construct and via host" );
+                port = Integer.parseInt( host.substring( portIdx + 2 ) );
+            }
+            host = host.substring(1, idx);
+        }
+        else {
+            int idx = host.indexOf( ":" );
+            if ( idx > 0 ){
+                if ( port != defaultPort() )
+                    throw new IllegalArgumentException( "can't specify port in construct and via host" );
+                port = Integer.parseInt( host.substring( idx + 1 ) );
+                host = host.substring( 0 , idx ).trim();
+            }
         }
 
         _host = host;
         _port = port;
-        updateInetAddress();
     }
 
     /**
@@ -95,11 +113,10 @@ public class ServerAddress {
      * @param addr inet socket address containing hostname and port
      */
     public ServerAddress( InetSocketAddress addr ){
-        _address = addr;
-        _host = _address.getHostName();
-        _port = _address.getPort();
+        _host = addr.getHostName();
+        _port = addr.getPort();
     }
-    
+
     // --------
     // equality, etc...
     // --------
@@ -118,28 +135,29 @@ public class ServerAddress {
             host = host.substring( 0 , idx );
         }
 
-        return 
+        return
             _port == port &&
             _host.equalsIgnoreCase( host );
     }
 
     @Override
-    public boolean equals( Object other ){
-        if ( other instanceof ServerAddress ){
-            ServerAddress a = (ServerAddress)other;
-            return 
-                a._port == _port &&
-                a._host.equals( _host );
-        }
-        if ( other instanceof InetSocketAddress ){
-            return _address.equals( other );
-        }
-        return false;
+    public boolean equals(final Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        final ServerAddress that = (ServerAddress) o;
+
+        if (_port != that._port) return false;
+        if (!_host.equals(that._host)) return false;
+
+        return true;
     }
 
     @Override
-    public int hashCode(){
-        return _host.hashCode() + _port;
+    public int hashCode() {
+        int result = _host.hashCode();
+        result = 31 * result + _port;
+        return result;
     }
 
     /**
@@ -157,23 +175,23 @@ public class ServerAddress {
     public int getPort(){
         return _port;
     }
-    
+
     /**
      * Gets the underlying socket address
      * @return socket address
+     * @throws MongoException.Network if the host can not be resolved
      */
-    public InetSocketAddress getSocketAddress(){
-        return _address;
+    public InetSocketAddress getSocketAddress() throws UnknownHostException {
+        return new InetSocketAddress(InetAddress.getByName(_host), _port);
     }
 
     @Override
     public String toString(){
-        return _address.toString();
+        return _host + ":" + _port;
     }
 
     final String _host;
     final int _port;
-    volatile InetSocketAddress _address;
 
     // --------
     // static helpers
@@ -192,16 +210,5 @@ public class ServerAddress {
      */
     public static int defaultPort(){
         return DBPort.PORT;
-    }
-
-    /**
-     * attempts to update the internal InetAddress by resolving the host name.
-     * @return true if host resolved to a new IP that is different from old one, false otherwise
-     * @throws UnknownHostException
-     */
-    boolean updateInetAddress() throws UnknownHostException {
-        InetSocketAddress oldAddress = _address;
-        _address = new InetSocketAddress( InetAddress.getByName(_host) , _port );
-        return !_address.equals(oldAddress);
     }
 }

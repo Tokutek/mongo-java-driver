@@ -1,20 +1,20 @@
-// BSONCallback.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
+// BSONCallback.java
 
 package org.bson;
 
@@ -52,7 +52,15 @@ public interface BSONCallback {
 
     void gotTimestamp( String name , int time , int inc );
     void gotObjectId( String name , ObjectId id );
-    void gotDBRef( String name , String ns , ObjectId id );
+
+    /**
+     * Invoked when {@link org.bson.BSONDecoder} encountered a DBPointer(0x0c) type field in a byte sequence.
+     *
+     * @param name the name of the field
+     * @param ns   the namespace to which reference is pointing to
+     * @param id   the if of the object to which reference is pointing to
+     */
+    void gotDBRef(String name, String ns, ObjectId id);
     
     /**
      * 

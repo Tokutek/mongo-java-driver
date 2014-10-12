@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2008 - 2012 10gen, Inc. <http://10gen.com>
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.mongodb;
@@ -42,7 +41,8 @@ import java.util.logging.Logger;
  * <ul>
  * <li>{@code mongodb://} is a required prefix to identify that this is a string in the standard connection format.</li>
  * <li>{@code username:password@} are optional.  If given, the driver will attempt to login to a database after
- * connecting to a database server.</li>
+ * connecting to a database server. For some authentication mechanisms, only the username is specified and the password is not,
+ * in which case the ":" after the username is left off as well.</li>
  * <li>{@code host1} is the only required part of the URI.  It identifies a server address to connect to.</li>
  * <li>{@code :portX} is optional and defaults to :27017 if not provided.</li>
  * <li>{@code /database} is the name of the database to login to and thus is only relevant if the
@@ -53,7 +53,7 @@ import java.util.logging.Logger;
  * but should be considered as deprecated.</li>
  * </ul>
  * <p>
- * The Java driver supports the following options (case insensitive):
+ * The following options are supported (case insensitive):
  * <p>
  * Replica set configuration:
  * </p>
@@ -66,10 +66,13 @@ import java.util.logging.Logger;
  * <li>{@code ssl=true|false}: Whether to connect using SSL.</li>
  * <li>{@code connectTimeoutMS=ms}: How long a connection can take to be opened before timing out.</li>
  * <li>{@code socketTimeoutMS=ms}: How long a send or receive on a socket can take before timing out.</li>
+ * <li>{@code maxIdleTimeMS=ms}: Maximum idle time of a pooled connection. A connection that exceeds this limit will be closed</li>
+ * <li>{@code maxLifeTimeMS=ms}: Maximum life time of a pooled connection. A connection that exceeds this limit will be closed</li>
  * </ul>
  * <p>Connection pool configuration:</p>
  * <ul>
  * <li>{@code maxPoolSize=n}: The maximum number of connections in the connection pool.</li>
+ * <li>{@code minPoolSize=n}: The minimum number of connections in the connection pool.</li>
  * <li>{@code waitQueueMultiple=n} : this multiplier, multiplied with the maxPoolSize setting, gives the maximum number of
  * threads that may be waiting for a connection to become available from the pool.  All further threads will get an
  * exception right away.</li>
@@ -127,13 +130,16 @@ import java.util.logging.Logger;
  * </ul>
  * <p>Authentication configuration:</p>
  * <ul>
- * <li>{@code authMechanism=MONGO-CR|GSSAPI}: The authentication mechanism to use if a credential was supplied.
- * The default is MONGODB-CR, which is the native MongoDB Challenge Response mechanism.
+ * <li>{@code authMechanism=MONGO-CR|GSSAPI|PLAIN|MONGODB-X509}: The authentication mechanism to use if a credential was supplied.
+ * The default is MONGODB-CR, which is the native MongoDB Challenge Response mechanism.  For the GSSAPI and MONGODB-X509 mechanisms,
+ * no password is accepted, only the username.
  * </li>
  * <li>{@code authSource=string}: The source of the authentication credentials.  This is typically the database that
  * the credentials have been created.  The value defaults to the database specified in the path portion of the URI.
  * If the database is specified in neither place, the default value is "admin".  For GSSAPI, it's not necessary to specify
  * a source.
+ * </li>
+ * <li>{@code gssapiServiceName=string}: This option only applies to the GSSAPI mechanism and is used to alter the service name..
  * </li>
  * <ul>
  * <p>
@@ -259,14 +265,18 @@ public class MongoClientURI {
     static Set<String> allKeys = new HashSet<String>();
 
     static {
+        generalOptionsKeys.add("minpoolsize");
         generalOptionsKeys.add("maxpoolsize");
         generalOptionsKeys.add("waitqueuemultiple");
         generalOptionsKeys.add("waitqueuetimeoutms");
         generalOptionsKeys.add("connecttimeoutms");
+        generalOptionsKeys.add("maxidletimems");
+        generalOptionsKeys.add("maxlifetimems");
         generalOptionsKeys.add("sockettimeoutms");
         generalOptionsKeys.add("sockettimeoutms");
         generalOptionsKeys.add("autoconnectretry");
         generalOptionsKeys.add("ssl");
+        generalOptionsKeys.add("replicaset");
 
         readPreferenceKeys.add("slaveok");
         readPreferenceKeys.add("readpreference");
@@ -280,6 +290,7 @@ public class MongoClientURI {
 
         authKeys.add("authmechanism");
         authKeys.add("authsource");
+        authKeys.add("gssapiservicename");
 
         allKeys.addAll(generalOptionsKeys);
         allKeys.addAll(authKeys);
@@ -304,6 +315,12 @@ public class MongoClientURI {
 
             if (key.equals("maxpoolsize")) {
                 builder.connectionsPerHost(Integer.parseInt(value));
+            } else if (key.equals("minpoolsize")) {
+                builder.minConnectionsPerHost(Integer.parseInt(value));
+            } else if (key.equals("maxidletimems")) {
+                builder.maxConnectionIdleTime(Integer.parseInt(value));
+            } else if (key.equals("maxlifetimems")) {
+                builder.maxConnectionLifeTime(Integer.parseInt(value));
             } else if (key.equals("waitqueuemultiple")) {
                 builder.threadsAllowedToBlockForConnectionMultiplier(Integer.parseInt(value));
             } else if (key.equals("waitqueuetimeoutms")) {
@@ -314,6 +331,8 @@ public class MongoClientURI {
                 builder.socketTimeout(Integer.parseInt(value));
             } else if (key.equals("autoconnectretry")) {
                 builder.autoConnectRetry(_parseBoolean(value));
+            } else if (key.equals("replicaset")) {
+                builder.requiredReplicaSetName(value);
             } else if (key.equals("ssl")) {
                 if (_parseBoolean(value)) {
                     builder.socketFactory(SSLSocketFactory.getDefault());
@@ -404,6 +423,7 @@ public class MongoClientURI {
 
         String mechanism = MongoCredential.MONGODB_CR_MECHANISM;
         String authSource = database;
+        String gssapiServiceName = null;
 
         for (String key : authKeys) {
             String value = getLastValue(optionsMap, key);
@@ -416,14 +436,26 @@ public class MongoClientURI {
                 mechanism = value;
             } else if (key.equals("authsource")) {
                 authSource = value;
+            } else if (key.equals("gssapiservicename")) {
+                gssapiServiceName = value;
             }
         }
 
         if (mechanism.equals(MongoCredential.GSSAPI_MECHANISM)) {
-            return MongoCredential.createGSSAPICredential(userName);
+            MongoCredential gssapiCredential = MongoCredential.createGSSAPICredential(userName);
+            if (gssapiServiceName != null) {
+                gssapiCredential = gssapiCredential.withMechanismProperty("SERVICE_NAME", gssapiServiceName);
+            }
+            return gssapiCredential;
+        }
+        else if (mechanism.equals(MongoCredential.PLAIN_MECHANISM)) {
+            return MongoCredential.createPlainCredential(userName, authSource, password);
         }
         else if (mechanism.equals(MongoCredential.MONGODB_CR_MECHANISM)) {
             return MongoCredential.createMongoCRCredential(userName, authSource, password);
+        }
+        else if (mechanism.equals(MongoCredential.MONGODB_X509_MECHANISM)) {
+            return MongoCredential.createMongoX509Credential(userName);
         }
         else {
              throw new IllegalArgumentException("Unsupported authMechanism: " + mechanism);
@@ -609,4 +641,5 @@ public class MongoClientURI {
     public String toString() {
         return uri;
     }
+
 }

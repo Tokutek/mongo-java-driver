@@ -1,17 +1,17 @@
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.mongodb;
@@ -19,23 +19,20 @@ package com.mongodb;
 import com.mongodb.util.TestCase;
 import org.bson.types.BasicBSONList;
 import org.bson.types.ObjectId;
-import org.testng.annotations.Test;
+import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 @SuppressWarnings({"unchecked", "deprecation"})
 public class DBObjectTest extends TestCase {
 
-    public DBObjectTest() {
-        super();
-        cleanupDB = "com_monogodb_unittest_DBObjectTest";
-        _db = cleanupMongo.getDB(cleanupDB);
-    }
-
-    @Test(groups = {"basic"})
+    @Test
     public void testBasicDBObjectCTOR()  {
         Map m = new HashMap();
         m.put("key", "value");
@@ -48,7 +45,7 @@ public class DBObjectTest extends TestCase {
         assertEquals(obj.get("bar"), null);
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testBasicDBObjectToString()  {
         Map m = new HashMap();
         m.put("key", new DBPointer("foo", new ObjectId("123456789012123456789012")));
@@ -57,7 +54,7 @@ public class DBObjectTest extends TestCase {
         assertEquals(obj.get("key").toString(), "{ \"$ref\" : \"foo\", \"$id\" : ObjectId(\"123456789012123456789012\") }");
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testDBObjectBuilder() {
         Map m = new HashMap();
         m.put("foo", "bar");
@@ -71,14 +68,14 @@ public class DBObjectTest extends TestCase {
 
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testToMap() {
         Map m = BasicDBObjectBuilder.start().add("y", "z").add("z","a").get().toMap();
         assertEquals(m.get("y"), "z");
         assertEquals(m.get("z"), "a");
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testBasicBSONList() {
         BasicBSONList l = new BasicBSONList();
         l.put(10, "x");
@@ -87,14 +84,13 @@ public class DBObjectTest extends TestCase {
         l.put("10", "y");
         assertEquals(l.get("10"), "y");
 
-        DBCollection c = _db.getCollection("dblist");
-        c.drop();
+        DBCollection c = collection;
         c.insert(BasicDBObjectBuilder.start().add("array", l).get());
         DBObject obj = c.findOne();
         assertEquals(obj.get("array") instanceof List, true);
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testPutAll() {
         DBObject start = BasicDBObjectBuilder.start().add( "a" , 1 ).add( "b" , 2 ).get();
 
@@ -109,7 +105,7 @@ public class DBObjectTest extends TestCase {
 
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testRemoveField() {
         BasicDBObject obj = new BasicDBObject();
         obj.put("x", "y");
@@ -133,9 +129,9 @@ public class DBObjectTest extends TestCase {
     }
 
 
-    @Test(groups = {"basic"})
+    @Test
     public void testInnerDot() {
-        DBCollection _colTest = _db.getCollection("test_collection");
+        DBCollection _colTest = collection;
 
         BasicDBObject dbObject = new BasicDBObject("test", "value");
         BasicDBObject innerObject = new BasicDBObject("test.member.name", true);
@@ -153,7 +149,7 @@ public class DBObjectTest extends TestCase {
         assertTrue(thrown);
     }
 
-    @Test(groups = {"basic"})
+    @Test
     public void testEntrySetOrder() {
         final List<String> expectedKeys = new ArrayList<String>();
         final BasicDBObject o = new BasicDBObject();
@@ -169,12 +165,6 @@ public class DBObjectTest extends TestCase {
         }
         assertEquals(keysFromKeySet, expectedKeys);
         assertEquals(keysFromEntrySet, expectedKeys);
-    }
-
-    private DB _db;
-    
-    public static void main( String args[] ) {
-        (new DBObjectTest()).runConsole();
     }
 }
 

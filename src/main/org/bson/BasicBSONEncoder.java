@@ -1,22 +1,46 @@
-// BSONEncoder.java
-
-/**
- *      Copyright (C) 2008 10gen Inc.
+/*
+ * Copyright (c) 2008-2014 MongoDB, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
+// BSONEncoder.java
+
 package org.bson;
+
+import com.mongodb.DBRefBase;
+import org.bson.io.BasicOutputBuffer;
+import org.bson.io.OutputBuffer;
+import org.bson.types.BSONTimestamp;
+import org.bson.types.Binary;
+import org.bson.types.Code;
+import org.bson.types.CodeWScope;
+import org.bson.types.MaxKey;
+import org.bson.types.MinKey;
+import org.bson.types.ObjectId;
+import org.bson.types.Symbol;
+
+import java.lang.reflect.Array;
+import java.nio.Buffer;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
 import static org.bson.BSON.ARRAY;
 import static org.bson.BSON.BINARY;
@@ -42,31 +66,6 @@ import static org.bson.BSON.SYMBOL;
 import static org.bson.BSON.TIMESTAMP;
 import static org.bson.BSON.UNDEFINED;
 import static org.bson.BSON.regexFlags;
-
-import java.lang.reflect.Array;
-import java.nio.Buffer;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Pattern;
-
-import org.bson.io.BasicOutputBuffer;
-import org.bson.io.OutputBuffer;
-import org.bson.types.BSONTimestamp;
-import org.bson.types.Binary;
-import org.bson.types.Code;
-import org.bson.types.CodeWScope;
-import org.bson.types.MaxKey;
-import org.bson.types.MinKey;
-import org.bson.types.ObjectId;
-import org.bson.types.Symbol;
-
-import com.mongodb.DBRefBase;
 
 /**
  * this is meant to be pooled or cached
@@ -95,6 +94,15 @@ public class BasicBSONEncoder implements BSONEncoder {
         
         _buf = out;
     }
+
+    /**
+     * Gets the buffer this encoder is writing to.
+     *
+     * @return the output buffer
+     */
+    protected OutputBuffer getOutputBuffer() {
+        return _buf;
+    }
  
     public void done(){
         _buf = null;
@@ -102,7 +110,10 @@ public class BasicBSONEncoder implements BSONEncoder {
    
     /**
      * @return true if object was handled
+     *
+     * @deprecated Override {@link #putSpecial(String, Object)} if you need to you need to handle custom types.
      */
+    @Deprecated
     protected boolean handleSpecialObjects( String name , BSONObject o ){
         return false;
     }
@@ -399,7 +410,6 @@ public class BasicBSONEncoder implements BSONEncoder {
         int before = _buf.getPosition();
         _buf.write( data );
         int after = _buf.getPosition();
-        com.mongodb.util.MyAsserts.assertEquals( after - before , data.length );
     }
     
     protected void putUUID( String name , UUID val ){
@@ -433,8 +443,8 @@ public class BasicBSONEncoder implements BSONEncoder {
     
     private void putPattern( String name, Pattern p ) {
         _put( REGEX , name );
-        _put( p.pattern() );
-        _put( regexFlags( p.flags() ) );
+        _buf.writeCString( p.pattern() );
+        _buf.writeCString( regexFlags( p.flags() ) );
     }
 
     private void putMinKey( String name ) {
@@ -447,87 +457,81 @@ public class BasicBSONEncoder implements BSONEncoder {
 
 
     // ----------------------------------------------
-    
+
     /**
      * Encodes the type and key.
-     * 
+     *
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     *             Access buffer directly via {@link #getOutputBuffer()} if you need to change how BSON is written.
      */
-    protected void _put( byte type , String name ){
-        _buf.write( type );
-        _put( name );
+    @Deprecated
+    protected void _put(byte type, String name) {
+        _buf.write(type);
+        _buf.writeCString(name);
     }
 
+    /**
+     * @deprecated This method is NOT a part of public API and will be dropped in 3.x versions.
+     *             Access buffer directly via {@link #getOutputBuffer()} if you need to change how BSON is written.
+     *             Otherwise override {@link #putString(String, String)}.
+     */
+    @Deprecated
     protected void _putValueString( String s ){
-        int lenPos = _buf.getPosition();
-        _buf.writeInt( 0 ); // making space for size
-        int strLen = _put( s );
-        _buf.writeInt( lenPos , strLen );
+        _buf.writeString(s);
     }
     
     void _reset( Buffer b ){
         b.position(0);
-        b.limit( b.capacity() );
+        b.limit(b.capacity());
     }
 
     /**
      * puts as utf-8 string
+     *
+     * @deprecated Replaced by {@code getOutputBuffer().writeCString(String)}.
      */
+    @Deprecated
     protected int _put( String str ){
-
-        final int len = str.length();
-        int total = 0;
-
-        for ( int i=0; i<len; ){
-            int c = Character.codePointAt( str , i );
-
-            if (c == 0x0) {
-                throw new BSONException(
-                        String.format("BSON cstring '%s' is not valid because it contains a null character at index %d", str, i));
-            }
-
-            if ( c < 0x80 ){
-                _buf.write( (byte)c );
-                total += 1;
-            }
-            else if ( c < 0x800 ){
-                _buf.write( (byte)(0xc0 + (c >> 6) ) );
-                _buf.write( (byte)(0x80 + (c & 0x3f) ) );
-                total += 2;
-            }
-            else if (c < 0x10000){
-                _buf.write( (byte)(0xe0 + (c >> 12) ) );
-                _buf.write( (byte)(0x80 + ((c >> 6) & 0x3f) ) );
-                _buf.write( (byte)(0x80 + (c & 0x3f) ) );
-                total += 3;
-            }
-            else {
-                _buf.write( (byte)(0xf0 + (c >> 18)) );
-                _buf.write( (byte)(0x80 + ((c >> 12) & 0x3f)) );
-                _buf.write( (byte)(0x80 + ((c >> 6) & 0x3f)) );
-                _buf.write( (byte)(0x80 + (c & 0x3f)) );
-                total += 4;
-            }
-            
-            i += Character.charCount(c);
-        }  
-        
-        _buf.write( (byte)0 );
-        total++;
-        return total;
+        return _buf.writeCString(str);
     }
 
+    /**
+     * Writes integer to underlying buffer.
+     *
+     * @param x the integer number
+     * @deprecated Replaced by {@code getOutputBuffer().writeInt(int)}.
+     */
+    @Deprecated
     public void writeInt( int x ){
         _buf.writeInt( x );
     }
 
+    /**
+     * Writes long to underlying buffer.
+     *
+     * @param x the long number
+     * @deprecated Replaced by {@code getOutputBuffer().writeLong(long)}.
+     */
+    @Deprecated
     public void writeLong( long x ){
-        _buf.writeLong( x );
-    }
-    
-    public void writeCString( String s ){
-        _put( s );
+        _buf.writeLong(x);
     }
 
+    /**
+     * Writes C string (null-terminated string) to underlying buffer.
+     *
+     * @param s the string
+     * @deprecated Replaced by {@code getOutputBuffer().writeCString(String)}.
+     */
+    @Deprecated
+    public void writeCString( String s ){
+        _buf.writeCString(s);
+    }
+
+    /**
+     * @deprecated Replaced by {@link #getOutputBuffer()}.
+     */
+    @Deprecated
     protected OutputBuffer _buf;
 
 }
