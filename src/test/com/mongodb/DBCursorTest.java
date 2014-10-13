@@ -18,6 +18,7 @@ package com.mongodb;
 
 import com.mongodb.util.TestCase;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.net.UnknownHostException;
