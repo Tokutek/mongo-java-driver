@@ -674,6 +674,7 @@ public class DBCursorTest extends TestCase {
         }
     }
 
+    @Ignore
     @Test(expected = MongoException.class)
     public void testSnapshotWithHint() {
         DBCursor cursor = new DBCursor(collection, new BasicDBObject(), new BasicDBObject(), ReadPreference.primary())
@@ -688,6 +689,7 @@ public class DBCursorTest extends TestCase {
         }
     }
 
+    @Ignore
     @Test(expected = MongoException.class)
     public void testSnapshotWithSort() {
         DBCursor cursor = new DBCursor(collection, new BasicDBObject(), new BasicDBObject(), ReadPreference.primary())
