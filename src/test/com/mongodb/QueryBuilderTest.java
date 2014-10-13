@@ -29,7 +29,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeThat;
+import static org.junit.Assume.assumeTrue;
 
 /**
  * Test for various methods of <code/>QueryBuilder</code>
@@ -292,7 +292,7 @@ public class QueryBuilderTest extends TestCase {
     
     @Test
     public void nearTest() {
-        assumeThat(serverIsAtLeastTokumxVersion(2.0) && !serverIsAtLeastTokumxVersion(2.1));
+        assumeTrue(serverIsAtLeastTokumxVersion(2.0) && !serverIsAtLeastTokumxVersion(2.1));
 
         String key = "loc";
         DBCollection collection = _testDB.getCollection("geoSpatial-test");
